@@ -6,7 +6,9 @@
 
 import argparse
 import glob
+import json
 import multiprocessing as mp
+import os
 
 import numpy as np
 import open3d as o3d
@@ -27,6 +29,10 @@ from metrics import (
 )
 
 from common.utils import get_filtered_scenes, robust_load_sim
+
+os.environ['GLOG_minloglevel']='2'
+os.environ['MAGNUM_LOG']='quiet'
+os.environ['HABITAT_SIM_LOG']='quiet'
 
 VALID_METRICS: List[str] = [
     "navigable_area",
@@ -69,6 +75,13 @@ def compute_metrics(
         assert metric in VALID_METRICS
     # load scene in habitat_simulator and trimesh
     hsim = robust_load_sim(scene_path)
+    
+    # grabbing FP scene glbs from stage file
+    with open(scene_path, 'r') as f:
+        scene_json = json.load(f)
+    scene_glb_path = os.path.join(os.path.dirname(scene_path), scene_json['render_asset'])
+    trimesh_scene = trimesh.load(scene_glb_path)
+
     trimesh_scene = trimesh.load(scene_path)
     # Simplify scene-mesh for faster metric computation
     # Does not impact the final metrics much
@@ -93,7 +106,7 @@ def compute_metrics(
     metric_values = {}
     for metric in metrics:
         metric_values[metric] = METRIC_TO_FN_MAP[metric](hsim, trimesh_scene)
-    metric_values["scene"] = scene_path
+    metric_values["scene"] = scene_path.split('/')[-1].split('.')[0]
     hsim.close()
     return metric_values
 
@@ -104,11 +117,11 @@ def _aux_fn(inputs: Any) -> Any:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset-root", type=str, required=True)
+    parser.add_argument("--dataset-root", type=str, required=True, help='path to FP stages directory')
     parser.add_argument("--metrics", type=str, nargs="+", default=VALID_METRICS)
     parser.add_argument("--filter-scenes", type=str, default="")
     parser.add_argument("--save-path", type=str, default="")
-    parser.add_argument("--scan-patterns", type=str, nargs="+", default=["**/*.glb"])
+    parser.add_argument("--scan-patterns", type=str, nargs="+", default=["**/*.json"])
     parser.add_argument("--voxel-size", type=float, default=0.1)
     parser.add_argument("--n-processes", type=int, default=8)
     parser.add_argument("--verbose", action="store_true", default=False)
@@ -144,4 +157,4 @@ if __name__ == "__main__":
         print(f"{metric:<30s} | {v:.3f}")
 
     if args.save_path != "":
-        stats.to_csv(args.save_path)
+        stats.to_csv(args.save_path, sep="\t")

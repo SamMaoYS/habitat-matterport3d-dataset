@@ -191,7 +191,8 @@ def compute_scene_clutter(
     mesh_triangles = np.copy(trimesh_scene.triangles)
     # convert habitat navmesh to a trimesh scene
     navmesh_vertices = np.array(hsim.pathfinder.build_navmesh_vertices())
-    navmesh_vertices = transform_coordinates_hsim_to_trimesh(navmesh_vertices)
+    ## transforming to trimesh not necessary for FP scenes (scene GLBs already have trimesh/standard transform)
+    # navmesh_vertices = transform_coordinates_hsim_to_trimesh(navmesh_vertices)
     ## three consecutive vertices form a triangle face
     navmesh_faces = np.arange(0, navmesh_vertices.shape[0], dtype=np.uint32)
     navmesh_faces = navmesh_faces.reshape(-1, 3)
@@ -251,13 +252,16 @@ def compute_floor_area(
         return 0.0
     floor_extents = get_floor_navigable_extents(hsim)
     mesh_vertices = trimesh_scene.triangles.reshape(-1, 3)
-    # Z axis in trimesh is vertically upward
+    # Y (not Z) axis in trimesh is vertically upward for FP scenes
     floor_area = 0.0
     for fext in floor_extents:
-        mask = (mesh_vertices[:, 2] >= fext["min"]) & (
-            mesh_vertices[:, 2] < fext["max"] + floor_limit
+        mask = (mesh_vertices[:, 1] >= fext["min"]) & (
+            mesh_vertices[:, 1] < fext["max"] + floor_limit
         )
-        floor_convex_hull = ConvexHull(mesh_vertices[mask, :2])
+        # floor_convex_hull = ConvexHull(mesh_vertices[mask, :2])
+        points = mesh_vertices[mask][:,[0,2]]
+        if len(points) > 0:
+            floor_convex_hull = ConvexHull(points)
         # convex_hull.volume computes the area for 2D convex hull
         floor_area += floor_convex_hull.volume
     return floor_area
