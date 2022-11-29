@@ -25,11 +25,13 @@ def convert_heading_to_quaternion(heading: float) -> qt.quaternion:
     return quat_from_angle_axis(math.radians(heading), np.array([0, 1.0, 0]))
 
 
-def make_habitat_configuration(scene_path: str, use_sensor: bool = False):
+def make_habitat_configuration(
+    scene_id: str, scene_dataset_config_file: str, use_sensor: bool = False
+):
     # simulator configuration
     backend_cfg = habitat_sim.SimulatorConfiguration()
-    backend_cfg.scene_id = scene_path
-
+    backend_cfg.scene_id = scene_id
+    backend_cfg.scene_dataset_config_file = scene_dataset_config_file
     # agent configuration
     sensor_cfg = habitat_sim.CameraSensorSpec()
     sensor_cfg.resolution = [1080, 960]
@@ -40,16 +42,19 @@ def make_habitat_configuration(scene_path: str, use_sensor: bool = False):
     return habitat_sim.Configuration(backend_cfg, [agent_cfg])
 
 
-def robust_load_sim(scene_path: str) -> habitat_sim.Simulator:
-    sim_cfg = make_habitat_configuration(scene_path, use_sensor=False)
+def robust_load_sim(
+    scene_id: str, scene_dataset_config_file: str
+) -> habitat_sim.Simulator:
+    sim_cfg = make_habitat_configuration(
+        scene_id, scene_dataset_config_file, use_sensor=True
+    )
+
     hsim = habitat_sim.Simulator(sim_cfg)
-    if not hsim.pathfinder.is_loaded:
-        hsim.close()
-        sim_cfg = make_habitat_configuration(scene_path, use_sensor=True)
-        hsim = habitat_sim.Simulator(sim_cfg)
-        navmesh_settings = habitat_sim.NavMeshSettings()
-        navmesh_settings.set_defaults()
-        hsim.recompute_navmesh(hsim.pathfinder, navmesh_settings, include_static_objects=True)
+    navmesh_settings = habitat_sim.NavMeshSettings()
+    navmesh_settings.set_defaults()
+    hsim.recompute_navmesh(
+        hsim.pathfinder, navmesh_settings, include_static_objects=True
+    )
     return hsim
 
 

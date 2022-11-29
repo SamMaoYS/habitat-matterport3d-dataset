@@ -30,9 +30,8 @@ from metrics import (
 
 from common.utils import get_filtered_scenes, robust_load_sim
 
-os.environ['GLOG_minloglevel']='2'
-os.environ['MAGNUM_LOG']='quiet'
-os.environ['HABITAT_SIM_LOG']='quiet'
+os.environ["MAGNUM_LOG"] = "quiet"
+os.environ["HABITAT_SIM_LOG"] = "quiet"
 
 VALID_METRICS: List[str] = [
     "navigable_area",
@@ -55,6 +54,7 @@ METRICS_TO_AVERAGE: List[str] = ["navigation_complexity", "scene_clutter"]
 
 def compute_metrics(
     scene_path: str,
+    scene_dataset_cfg: str,
     voxel_size: float,
     metrics: List[str] = VALID_METRICS,
     verbose: bool = False,
@@ -74,15 +74,16 @@ def compute_metrics(
     for metric in metrics:
         assert metric in VALID_METRICS
     # load scene in habitat_simulator and trimesh
-    hsim = robust_load_sim(scene_path)
-    
+    scene_id = scene_path.split("/")[-1].replace(".stage_config.json", "")
+    hsim = robust_load_sim(scene_id, scene_dataset_cfg)
     # grabbing FP scene glbs from stage file
-    with open(scene_path, 'r') as f:
+    with open(scene_path, "r") as f:
         scene_json = json.load(f)
-    scene_glb_path = os.path.join(os.path.dirname(scene_path), scene_json['render_asset'])
+    scene_glb_path = os.path.join(
+        os.path.dirname(scene_path), scene_json["render_asset"]
+    )
     trimesh_scene = trimesh.load(scene_glb_path)
 
-    trimesh_scene = trimesh.load(scene_path)
     # Simplify scene-mesh for faster metric computation
     # Does not impact the final metrics much
     o3d_scene = o3d.geometry.TriangleMesh()
@@ -106,7 +107,7 @@ def compute_metrics(
     metric_values = {}
     for metric in metrics:
         metric_values[metric] = METRIC_TO_FN_MAP[metric](hsim, trimesh_scene)
-    metric_values["scene"] = scene_path.split('/')[-1].split('.')[0]
+    metric_values["scene"] = scene_path.split("/")[-1].split(".")[0]
     hsim.close()
     return metric_values
 
@@ -117,10 +118,13 @@ def _aux_fn(inputs: Any) -> Any:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset-root", type=str, required=True, help='path to FP stages directory')
+    parser.add_argument(
+        "--dataset-root", type=str, required=True, help="path to FP stages directory"
+    )
     parser.add_argument("--metrics", type=str, nargs="+", default=VALID_METRICS)
     parser.add_argument("--filter-scenes", type=str, default="")
     parser.add_argument("--save-path", type=str, default="")
+    parser.add_argument("--scene-dataset-cfg", type=str, required=True)
     parser.add_argument("--scan-patterns", type=str, nargs="+", default=["**/*.json"])
     parser.add_argument("--voxel-size", type=float, default=0.1)
     parser.add_argument("--n-processes", type=int, default=8)
@@ -142,7 +146,10 @@ if __name__ == "__main__":
 
     context = mp.get_context("forkserver")
     pool = context.Pool(processes=args.n_processes, maxtasksperchild=2)
-    inputs = [[scene, args.voxel_size, args.metrics, args.verbose] for scene in scenes]
+    inputs = [
+        [scene, args.scene_dataset_cfg, args.voxel_size, args.metrics, args.verbose]
+        for scene in scenes
+    ]
 
     stats = list(tqdm.tqdm(pool.imap(_aux_fn, inputs), total=len(scenes)))
     stats = pd.DataFrame(stats)

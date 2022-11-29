@@ -259,9 +259,9 @@ def compute_floor_area(
             mesh_vertices[:, 1] < fext["max"] + floor_limit
         )
         # floor_convex_hull = ConvexHull(mesh_vertices[mask, :2])
-        points = mesh_vertices[mask][:,[0,2]]
+        points = mesh_vertices[mask][:, [0, 2]]
         if len(points) > 0:
             floor_convex_hull = ConvexHull(points)
-        # convex_hull.volume computes the area for 2D convex hull
-        floor_area += floor_convex_hull.volume
+            # convex_hull.volume computes the area for 2D convex hull
+            floor_area += floor_convex_hull.volume
     return floor_area
