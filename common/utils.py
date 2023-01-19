@@ -4,6 +4,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import os
 import math
 import random
 from typing import List, Optional
@@ -67,7 +68,7 @@ def get_filtered_scenes(scenes: List[str], filter_scenes_path: str) -> List[str]
     filter_scenes = [f.strip("\n") for f in filter_scenes]
     filtered_scenes = []
     for scene in scenes:
-        scene_name = scene.split("/")[-1][: -len(".glb")]
+        scene_name = os.path.basename(scene).split('.')[0]
         if scene_name in filter_scenes:
             filtered_scenes.append(scene)
     return filtered_scenes

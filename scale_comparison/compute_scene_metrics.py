@@ -106,7 +106,7 @@ def compute_metrics(
 
     metric_values = {}
     for metric in metrics:
-        metric_values[metric] = METRIC_TO_FN_MAP[metric](hsim, trimesh_scene)
+        metric_values[metric] = METRIC_TO_FN_MAP[metric](hsim, trimesh_scene, scene_id)
     metric_values["scene"] = scene_path.split("/")[-1].split(".")[0]
     hsim.close()
     return metric_values
@@ -127,7 +127,7 @@ if __name__ == "__main__":
     parser.add_argument("--scene-dataset-cfg", type=str, required=True)
     parser.add_argument("--scan-patterns", type=str, nargs="+", default=["**/*.json"])
     parser.add_argument("--voxel-size", type=float, default=0.1)
-    parser.add_argument("--n-processes", type=int, default=8)
+    parser.add_argument("--n-processes", type=int, default=4)
     parser.add_argument("--verbose", action="store_true", default=False)
 
     args = parser.parse_args()
@@ -145,13 +145,20 @@ if __name__ == "__main__":
         print(f"Number of scenes in {args.dataset_root}: {len(scenes)}")
 
     context = mp.get_context("forkserver")
-    pool = context.Pool(processes=args.n_processes, maxtasksperchild=2)
     inputs = [
         [scene, args.scene_dataset_cfg, args.voxel_size, args.metrics, args.verbose]
         for scene in scenes
     ]
 
-    stats = list(tqdm.tqdm(pool.imap(_aux_fn, inputs), total=len(scenes)))
+    if args.n_processes == 1:
+        stats = []
+        num_scenes = len(scenes)
+        for i in range(num_scenes):
+            stats.append(_aux_fn(inputs[i]))
+    else:
+        pool = context.Pool(processes=args.n_processes, maxtasksperchild=2)
+        stats = list(tqdm.tqdm(pool.imap(_aux_fn, inputs), total=len(scenes)))
+    
     stats = pd.DataFrame(stats)
     stats.set_index("scene", inplace=True)
     print("============= Metrics =============")

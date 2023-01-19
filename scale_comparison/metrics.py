@@ -4,6 +4,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import os
 import math
 from typing import Any, Dict, List
 
@@ -100,7 +101,6 @@ def get_floor_navigable_extents(
         floor_max = core_sample_y[core_sample_labels == i].max().item()
         floor_mean = core_sample_y[core_sample_labels == i].mean().item()
         floor_extents.append({"min": floor_min, "max": floor_max, "mean": floor_mean})
-
     return floor_extents
 
 
@@ -163,6 +163,7 @@ def compute_navigation_complexity(
 def compute_scene_clutter(
     hsim: habitat_sim.Simulator,
     trimesh_scene: trimesh.parent.Geometry,
+    scene_id: str,
     closeness_thresh: float = 0.5,
 ) -> float:
     """
@@ -199,6 +200,22 @@ def compute_scene_clutter(
     navmesh_triangles = navmesh_vertices.reshape(-1, 3, 3)
     navmesh_centroids = navmesh_triangles.mean(axis=1)
     navmesh = trimesh.Trimesh(vertices=navmesh_vertices, faces=navmesh_faces)
+
+    # visualization
+    visualization = False
+    if visualization:
+        from visualization import Visualizer
+        viz = Visualizer()
+        scene_pcd = trimesh.PointCloud(vertices=trimesh_scene.vertices, colors=[0, 255, 0])
+        viz.add_geometry(scene_pcd)
+        viz.add_geometry(navmesh)
+        color, _ = viz.render()
+        from PIL import Image
+        img = Image.fromarray(color.astype('uint8'), 'RGBA')
+        os.makedirs('navmesh-render', exist_ok=True)
+        img.save(f'navmesh-render/{scene_id}.png')
+        navmesh.export(f'navmesh-render/{scene_id}.ply')
+
     # Find closest distance between a mesh_triangle and the navmesh
     # This is approximated by measuring the distance between each vertex and
     # centroid of a mesh_triangle to the navmesh surface
@@ -227,6 +244,7 @@ def compute_scene_clutter(
 def compute_floor_area(
     hsim: habitat_sim.Simulator,
     trimesh_scene: trimesh.parent.Geometry,
+    scene_id: str,
     floor_limit: float = 0.5,
 ) -> float:
     """
@@ -255,13 +273,31 @@ def compute_floor_area(
     # Y (not Z) axis in trimesh is vertically upward for FP scenes
     floor_area = 0.0
     for fext in floor_extents:
-        mask = (mesh_vertices[:, 1] >= fext["min"]) & (
+        mask = (mesh_vertices[:, 1] >= fext["min"] - floor_limit) & (
             mesh_vertices[:, 1] < fext["max"] + floor_limit
         )
         # floor_convex_hull = ConvexHull(mesh_vertices[mask, :2])
         points = mesh_vertices[mask][:, [0, 2]]
         if len(points) > 0:
             floor_convex_hull = ConvexHull(points)
+            visualization = False
+            if visualization:
+                import matplotlib.pyplot as plt
+                fig = plt.figure(figsize=(5, 5))
+                ax = fig.add_subplot(111)
+                plt.plot(points[:, 0], points[:, 1], '.')
+                plt.plot(points[floor_convex_hull.vertices, 0],
+                        points[floor_convex_hull.vertices, 1], 'r--', lw=4)
+                plt.plot(points[(floor_convex_hull.vertices[-1], floor_convex_hull.vertices[0]), 0],
+                        points[(floor_convex_hull.vertices[-1], floor_convex_hull.vertices[0]), 1], 'r--', lw=4)
+                plt.plot(points[floor_convex_hull.vertices[:], 0], points[floor_convex_hull.vertices[:], 1],
+                        marker='o', markersize=7, color="red")
+                ax.set_aspect('equal', adjustable='box')
+                os.makedirs('floor-area', exist_ok=True)
+                fig.savefig(f'floor-area/{scene_id}.png', dpi=fig.dpi, bbox_inches='tight')
+                plt.cla()
             # convex_hull.volume computes the area for 2D convex hull
             floor_area += floor_convex_hull.volume
+        else:
+            print(f'{scene_id} has 0 floor area')
     return floor_area
