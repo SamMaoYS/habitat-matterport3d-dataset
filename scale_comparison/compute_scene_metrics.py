@@ -28,6 +28,7 @@ from metrics import (
     compute_navigation_complexity,
     compute_scene_clutter,
     compute_navmesh_island_classifications,
+    get_ceiling_islands,
 )
 
 from common.utils import get_filtered_scenes, robust_load_sim
@@ -108,8 +109,13 @@ def compute_metrics(
 
     metric_values = {}
     navmesh_classification_results, indoor_islands = compute_navmesh_island_classifications(hsim)
+    island_indices = np.arange(hsim.pathfinder.num_islands)
+    outdoor_islands = np.setdiff1d(island_indices, indoor_islands)
+    ceiling_islands = get_ceiling_islands(hsim, outdoor_islands, trimesh_scene)
+    # remove ceiling islands
+    outdoor_islands = np.setdiff1d(outdoor_islands, ceiling_islands)
     for metric in metrics:
-        metric_values[metric] = METRIC_TO_FN_MAP[metric](hsim, trimesh_scene, scene_id, indoor_islands=indoor_islands, navigable_area=metric_values.get('navigable_area'))
+        metric_values[metric] = METRIC_TO_FN_MAP[metric](hsim, trimesh_scene, scene_id, indoor_islands=indoor_islands, outdoor_islands=outdoor_islands, navigable_area=metric_values.get('navigable_area'))
     metric_values["scene"] = scene_path.split("/")[-1].split(".")[0]
     hsim.close()
     return metric_values
