@@ -8,14 +8,112 @@ import os
 import math
 from typing import Any, Dict, List
 
+import magnum as mn
 import habitat_sim
 import numpy as np
 import scipy
 import trimesh
 from scipy.spatial import ConvexHull
 from sklearn.cluster import DBSCAN
-
+import pdb
 EPS = 1e-10
+
+def island_indoor_metric(
+        hsim: habitat_sim.Simulator, island_ix: int, num_samples=100, jitter_dist=0.1, max_tries=1000
+    ) -> float:
+    """
+    Compute a heuristic for ratio of an island inside vs. outside based on checking whether there is a roof over a set of sampled navmesh points.
+    """
+
+    assert hsim.pathfinder.is_loaded
+    assert hsim.pathfinder.num_islands > island_ix
+
+    # collect jittered samples
+    samples = []
+    for _sample_ix in range(max_tries):
+        new_sample = hsim.pathfinder.get_random_navigable_point(
+            island_index=island_ix
+        )
+        too_close = False
+        for prev_sample in samples:
+            dist_to = np.linalg.norm(prev_sample - new_sample)
+            if dist_to < jitter_dist:
+                too_close = True
+                break
+        if not too_close:
+            samples.append(new_sample)
+        if len(samples) >= num_samples:
+            break
+
+    # classify samples
+    indoor_count = 0
+    for sample in samples:
+        raycast_results = hsim.cast_ray(
+            habitat_sim.geo.Ray(sample, mn.Vector3(0, 1, 0))
+        )
+        if raycast_results.has_hits():
+            # assume any hit indicates "indoor"
+            indoor_count += 1
+
+    # return the ration of indoor to outdoor as the metric
+    return indoor_count / len(samples)
+
+def compute_navmesh_island_classifications(hsim: habitat_sim.Simulator, active_indoor_threshold=0.85):
+    """
+    Classify navmeshes as outdoor or indoor and find the largest indoor island.
+    active_indoor_threshold is acceptacle indoor|outdoor ration for an active island (for example to allow some islands with a small porch or skylight)
+    """
+    if not hsim.pathfinder.is_loaded:
+        navmesh_classification_results = None
+        print("No NavMesh loaded to visualize.")
+        return
+
+    navmesh_classification_results = {}
+
+    navmesh_classification_results["active_island"] = -1
+    navmesh_classification_results[
+        "active_indoor_threshold"
+    ] = active_indoor_threshold
+    active_island_size = 0
+    number_of_indoor = 0
+    navmesh_classification_results["island_info"] = {}
+    indoor_islands = []
+
+    for island_ix in range(hsim.pathfinder.num_islands):
+        navmesh_classification_results["island_info"][island_ix] = {}
+        navmesh_classification_results["island_info"][island_ix][
+            "indoor"
+        ] = island_indoor_metric(hsim, island_ix=island_ix)
+        if (
+            navmesh_classification_results["island_info"][island_ix]["indoor"]
+            > active_indoor_threshold
+        ):
+            number_of_indoor += 1
+            indoor_islands.append(island_ix)
+        island_size = hsim.pathfinder.island_area(island_ix)
+
+        if (
+            active_island_size < island_size
+            and navmesh_classification_results["island_info"][island_ix][
+                "indoor"
+            ]
+            > active_indoor_threshold
+        ):
+            active_island_size = island_size
+            navmesh_classification_results["active_island"] = island_ix
+    # print(
+    #     f"Found active island {navmesh_classification_results['active_island']} with area {active_island_size}."
+    # )
+    # print(
+    #     f"     Found {number_of_indoor} indoor islands out of {hsim.pathfinder.num_islands} total."
+    # )
+    for island_ix in range(hsim.pathfinder.num_islands):
+        island_info = navmesh_classification_results["island_info"][island_ix]
+        info_str = f"    {island_ix}: indoor ratio = {island_info['indoor']}, area = {hsim.pathfinder.island_area(island_ix)}"
+        if navmesh_classification_results["active_island"] == island_ix:
+            info_str += "  -- active--"
+        # print(info_str)
+    return navmesh_classification_results, indoor_islands
 
 
 def get_geodesic_distance(
@@ -70,7 +168,7 @@ def transform_coordinates_hsim_to_trimesh(xyz: np.ndarray) -> np.ndarray:
 
 
 def get_floor_navigable_extents(
-    hsim: habitat_sim.Simulator, num_points_to_sample: int = 20000
+    hsim: habitat_sim.Simulator, *args: Any, num_points_to_sample: int = 20000, **kwargs: Any
 ) -> List[Dict[str, float]]:
     """
     Function to estimate the number of floors in a 3D scene and the Y extents
@@ -81,11 +179,15 @@ def get_floor_navigable_extents(
     """
     # randomly sample navigable points
     random_navigable_points = []
-    for _i in range(num_points_to_sample):
-        point = hsim.pathfinder.get_random_navigable_point()
-        if np.isnan(point).any() or np.isinf(point).any():
-            continue
-        random_navigable_points.append(point)
+    indoor_islands = kwargs['indoor_islands']
+    for island_index in indoor_islands:
+        tmp_random_navigable_points= []
+        for _i in range(num_points_to_sample):
+            point = hsim.pathfinder.get_random_navigable_point(island_index)
+            if np.isnan(point).any() or np.isinf(point).any():
+                continue
+            tmp_random_navigable_points.append(point)
+        random_navigable_points += tmp_random_navigable_points
     random_navigable_points = np.array(random_navigable_points)
     # cluster the rounded y_coordinates using DBScan
     y_coors = np.around(random_navigable_points[:, 1], decimals=1)
@@ -106,7 +208,7 @@ def get_floor_navigable_extents(
 
 def compute_navigable_area(
     hsim: habitat_sim.Simulator, *args: Any, **kwargs: Any
-) -> float:
+) -> dict:
     """
     Navigable area (m^2) measures the total scene area that is actually
     navigable in the scene. This is computed for a cylindrical robot with radius
@@ -114,8 +216,46 @@ def compute_navigable_area(
     This excludes points that are not reachable by the robot. Higher values
     indicate larger quantity and diversity of viewpoints for a robot.
     """
-    return hsim.pathfinder.navigable_area
+    indoor_islands = kwargs['indoor_islands']
+    island_indices = np.arange(hsim.pathfinder.num_islands)
+    outdoor_islands = np.setdiff1d(island_indices, indoor_islands)
+    indoor_area = np.sum([hsim.pathfinder.island_area(island) for island in indoor_islands])
+    outdoor_area = np.sum([hsim.pathfinder.island_area(island) for island in outdoor_islands])
+    assert indoor_area + outdoor_area == hsim.pathfinder.navigable_area
+    navigable_area = {
+        'indoor_area': indoor_area,
+        'outdoor_area': outdoor_area,
+        'total_area': hsim.pathfinder.navigable_area
+    }
+    return navigable_area
 
+def compute_navigation_complexity_impl(
+    hsim: habitat_sim.Simulator,
+    islands: list,
+    max_pairs_to_sample: int = 20000,
+    max_trials_per_pair: int = 10,
+) -> float:
+    if not hsim.pathfinder.is_loaded:
+        return 0.0
+    navcomplexity = 0.0
+    num_sampled_pairs = 0
+    for island_index in islands:
+        while num_sampled_pairs < max_pairs_to_sample:
+            num_sampled_pairs += 1
+            p1 = hsim.pathfinder.get_random_navigable_point(island_index)
+            num_trials = 0
+            while num_trials < max_trials_per_pair:
+                num_trials += 1
+                p2 = hsim.pathfinder.get_random_navigable_point(island_index)
+                # Different floors
+                if abs(p1[1] - p2[1]) > 0.5:
+                    continue
+                cur_navcomplexity = get_navcomplexity(hsim, p1, p2)
+                # Ignore disconnected pairs
+                if math.isinf(cur_navcomplexity):
+                    continue
+                navcomplexity = max(navcomplexity, cur_navcomplexity)
+    return navcomplexity
 
 def compute_navigation_complexity(
     hsim: habitat_sim.Simulator,
@@ -139,32 +279,81 @@ def compute_navigation_complexity(
     """
     if not hsim.pathfinder.is_loaded:
         return 0.0
-    navcomplexity = 0.0
-    num_sampled_pairs = 0
-    while num_sampled_pairs < max_pairs_to_sample:
-        num_sampled_pairs += 1
-        p1 = hsim.pathfinder.get_random_navigable_point()
-        num_trials = 0
-        while num_trials < max_trials_per_pair:
-            num_trials += 1
-            p2 = hsim.pathfinder.get_random_navigable_point()
-            # Different floors
-            if abs(p1[1] - p2[1]) > 0.5:
-                continue
-            cur_navcomplexity = get_navcomplexity(hsim, p1, p2)
-            # Ignore disconnected pairs
-            if math.isinf(cur_navcomplexity):
-                continue
-            navcomplexity = max(navcomplexity, cur_navcomplexity)
-
+    indoor_islands = kwargs['indoor_islands']
+    island_indices = np.arange(hsim.pathfinder.num_islands)
+    outdoor_islands = np.setdiff1d(island_indices, indoor_islands)
+    indoor_navcomplexity = compute_navigation_complexity_impl(hsim, indoor_islands, max_pairs_to_sample, max_trials_per_pair)
+    outdoor_navcomplexity = compute_navigation_complexity_impl(hsim, outdoor_islands, max_pairs_to_sample, max_trials_per_pair)
+    navcomplexity = {
+        'indoor_navcomplexity': indoor_navcomplexity,
+        'outdoor_navcomplexity': outdoor_navcomplexity,
+        'navcomplexity': max(indoor_navcomplexity, outdoor_navcomplexity)
+    }
     return navcomplexity
 
+def compute_scene_clutter_impl(
+    trimesh_scene: trimesh.parent.Geometry,
+    navmesh_vertices: np.ndarray,
+    navmesh_area: float,
+    *args: Any,
+    closeness_thresh: float = 0.5,
+    **kwargs: Any,
+) -> float:
+    mesh_triangles = np.copy(trimesh_scene.triangles)
+    navmesh_faces = np.arange(0, navmesh_vertices.shape[0], dtype=np.uint32)
+    navmesh_faces = navmesh_faces.reshape(-1, 3)
+    navmesh_triangles = navmesh_vertices.reshape(-1, 3, 3)
+    navmesh_centroids = navmesh_triangles.mean(axis=1)
+    navmesh = trimesh.Trimesh(vertices=navmesh_vertices, faces=navmesh_faces)
+
+    # visualization
+    visualization = False
+    if visualization:
+        trimesh_scene = kwargs['trimesh_scene']
+        navmesh_id = kwargs['navmesh_id']
+        from visualization import Visualizer
+        viz = Visualizer()
+        scene_pcd = trimesh.PointCloud(vertices=trimesh_scene.vertices, colors=[0, 255, 0])
+        viz.add_geometry(scene_pcd)
+        viz.add_geometry(navmesh)
+        color, _ = viz.render()
+        from PIL import Image
+        img = Image.fromarray(color.astype('uint8'), 'RGBA')
+        os.makedirs('navmesh-render', exist_ok=True)
+        img.save(f'navmesh-render/{navmesh_id}.png')
+        navmesh.export(f'navmesh-render/{navmesh_id}.ply')
+
+    # Find closest distance between a mesh_triangle and the navmesh
+    # This is approximated by measuring the distance between each vertex and
+    # centroid of a mesh_triangle to the navmesh surface
+    ## (1) pre-filtering to remove unrelated mesh_triangles
+    tree = scipy.spatial.cKDTree(navmesh_centroids)
+    mesh_centroids = mesh_triangles.mean(axis=1)[:, np.newaxis, :]
+    mindist, _ = tree.query(mesh_centroids)
+    valid_mask = mindist[:, 0] <= 2 * closeness_thresh
+    mesh_triangles = mesh_triangles[valid_mask]
+    mesh_centroids = mesh_centroids[valid_mask]
+    # (2) min distance b/w vertex / centroid of a mesh triangle to navmesh
+    mesh_tricents = np.concatenate(
+        [mesh_triangles, mesh_centroids], axis=1
+    )  # (N, 4, 3)
+    mesh_tricents = mesh_tricents.reshape(-1, 3)
+    _, d2navmesh, _ = navmesh.nearest.on_surface(mesh_tricents)  # (N * 4, )
+    d2navmesh = d2navmesh.reshape(-1, 4).min(axis=1)  # (N, )
+    closest_mesh_triangles = mesh_triangles[(d2navmesh < closeness_thresh)]
+    clutter_area = get_triangle_areas(closest_mesh_triangles).sum().item()
+    clutter = clutter_area / (navmesh_area + EPS)
+
+    return clutter
 
 def compute_scene_clutter(
     hsim: habitat_sim.Simulator,
     trimesh_scene: trimesh.parent.Geometry,
+    navigable_area: dict,
     scene_id: str,
+    *args: Any,
     closeness_thresh: float = 0.5,
+    **kwargs: Any,
 ) -> float:
     """
     Scene clutter measures amount of clutter in the scene. This is computed as
@@ -189,55 +378,27 @@ def compute_scene_clutter(
     """
     if not hsim.pathfinder.is_loaded:
         return 0.0
-    mesh_triangles = np.copy(trimesh_scene.triangles)
     # convert habitat navmesh to a trimesh scene
-    navmesh_vertices = np.array(hsim.pathfinder.build_navmesh_vertices())
+    total_navmesh_vertices = np.array(hsim.pathfinder.build_navmesh_vertices())
+    indoor_islands = kwargs['indoor_islands']
+    island_indices = np.arange(hsim.pathfinder.num_islands)
+    outdoor_islands = np.setdiff1d(island_indices, indoor_islands)
+    indoor_navmesh_vertices = [np.array(hsim.pathfinder.build_navmesh_vertices(island_index)) for island_index in indoor_islands]
+    indoor_navmesh_vertices = np.concatenate(indoor_navmesh_vertices, axis=0)
+    outdoor_navmesh_vertices = [np.array(hsim.pathfinder.build_navmesh_vertices(island_index)) for island_index in outdoor_islands]
+    outdoor_navmesh_vertices = np.concatenate(outdoor_navmesh_vertices, axis=0)
     ## transforming to trimesh not necessary for FP scenes (scene GLBs already have trimesh/standard transform)
     # navmesh_vertices = transform_coordinates_hsim_to_trimesh(navmesh_vertices)
     ## three consecutive vertices form a triangle face
-    navmesh_faces = np.arange(0, navmesh_vertices.shape[0], dtype=np.uint32)
-    navmesh_faces = navmesh_faces.reshape(-1, 3)
-    navmesh_triangles = navmesh_vertices.reshape(-1, 3, 3)
-    navmesh_centroids = navmesh_triangles.mean(axis=1)
-    navmesh = trimesh.Trimesh(vertices=navmesh_vertices, faces=navmesh_faces)
+    indoor_clutter = compute_scene_clutter_impl(trimesh_scene, indoor_navmesh_vertices, navigable_area['indoor_area'], closeness_thresh=closeness_thresh, navmesh_id=f'{scene_id}_indoor')
+    outdoor_clutter = compute_scene_clutter_impl(trimesh_scene, outdoor_navmesh_vertices, navigable_area['outdoor_area'], closeness_thresh=closeness_thresh, navmesh_id=f'{scene_id}_outdoor')
+    total_clutter = compute_scene_clutter_impl(trimesh_scene, total_navmesh_vertices, navigable_area['total_area'], closeness_thresh=closeness_thresh, navmesh_id=f'{scene_id}_total')
 
-    # visualization
-    visualization = False
-    if visualization:
-        from visualization import Visualizer
-        viz = Visualizer()
-        scene_pcd = trimesh.PointCloud(vertices=trimesh_scene.vertices, colors=[0, 255, 0])
-        viz.add_geometry(scene_pcd)
-        viz.add_geometry(navmesh)
-        color, _ = viz.render()
-        from PIL import Image
-        img = Image.fromarray(color.astype('uint8'), 'RGBA')
-        os.makedirs('navmesh-render', exist_ok=True)
-        img.save(f'navmesh-render/{scene_id}.png')
-        navmesh.export(f'navmesh-render/{scene_id}.ply')
-
-    # Find closest distance between a mesh_triangle and the navmesh
-    # This is approximated by measuring the distance between each vertex and
-    # centroid of a mesh_triangle to the navmesh surface
-    ## (1) pre-filtering to remove unrelated mesh_triangles
-    tree = scipy.spatial.cKDTree(navmesh_centroids)
-    mesh_centroids = mesh_triangles.mean(axis=1)[:, np.newaxis, :]
-    mindist, _ = tree.query(mesh_centroids)
-    valid_mask = mindist[:, 0] <= 2 * closeness_thresh
-    mesh_triangles = mesh_triangles[valid_mask]
-    mesh_centroids = mesh_centroids[valid_mask]
-    # (2) min distance b/w vertex / centroid of a mesh triangle to navmesh
-    mesh_tricents = np.concatenate(
-        [mesh_triangles, mesh_centroids], axis=1
-    )  # (N, 4, 3)
-    mesh_tricents = mesh_tricents.reshape(-1, 3)
-    _, d2navmesh, _ = navmesh.nearest.on_surface(mesh_tricents)  # (N * 4, )
-    d2navmesh = d2navmesh.reshape(-1, 4).min(axis=1)  # (N, )
-    closest_mesh_triangles = mesh_triangles[(d2navmesh < closeness_thresh)]
-    clutter_area = get_triangle_areas(closest_mesh_triangles).sum().item()
-    navmesh_area = hsim.pathfinder.navigable_area
-    clutter = clutter_area / (navmesh_area + EPS)
-
+    clutter = {
+        'indoor_clutter': indoor_clutter,
+        'outdoor_clutter': outdoor_clutter,
+        'total_clutter': total_clutter,
+    }
     return clutter
 
 
@@ -246,6 +407,7 @@ def compute_floor_area(
     trimesh_scene: trimesh.parent.Geometry,
     scene_id: str,
     floor_limit: float = 0.5,
+    **kwargs: Any,
 ) -> float:
     """
     Floor area (m^2) measures the overall extents of the floor regions in the
@@ -268,7 +430,8 @@ def compute_floor_area(
     """
     if not hsim.pathfinder.is_loaded:
         return 0.0
-    floor_extents = get_floor_navigable_extents(hsim)
+    indoor_islands = kwargs['indoor_islands']
+    floor_extents = get_floor_navigable_extents(hsim, indoor_islands=indoor_islands)
     mesh_vertices = trimesh_scene.triangles.reshape(-1, 3)
     # Y (not Z) axis in trimesh is vertically upward for FP scenes
     floor_area = 0.0

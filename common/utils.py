@@ -33,6 +33,7 @@ def make_habitat_configuration(
     backend_cfg = habitat_sim.SimulatorConfiguration()
     backend_cfg.scene_id = scene_id
     backend_cfg.scene_dataset_config_file = scene_dataset_config_file
+    backend_cfg.enable_physics = True
     # agent configuration
     sensor_cfg = habitat_sim.CameraSensorSpec()
     sensor_cfg.resolution = [1080, 960]

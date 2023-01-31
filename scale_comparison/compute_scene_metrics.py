@@ -26,6 +26,7 @@ from metrics import (
     compute_navigable_area,
     compute_navigation_complexity,
     compute_scene_clutter,
+    compute_navmesh_island_classifications,
 )
 
 from common.utils import get_filtered_scenes, robust_load_sim
@@ -105,8 +106,9 @@ def compute_metrics(
     trimesh_scene.faces = np.array(o3d_scene.triangles)
 
     metric_values = {}
+    navmesh_classification_results, indoor_islands = compute_navmesh_island_classifications(hsim)
     for metric in metrics:
-        metric_values[metric] = METRIC_TO_FN_MAP[metric](hsim, trimesh_scene, scene_id)
+        metric_values[metric] = METRIC_TO_FN_MAP[metric](hsim, trimesh_scene, scene_id, indoor_islands=indoor_islands)
     metric_values["scene"] = scene_path.split("/")[-1].split(".")[0]
     hsim.close()
     return metric_values
@@ -155,6 +157,7 @@ if __name__ == "__main__":
         num_scenes = len(scenes)
         for i in range(num_scenes):
             stats.append(_aux_fn(inputs[i]))
+            break
     else:
         pool = context.Pool(processes=args.n_processes, maxtasksperchild=2)
         stats = list(tqdm.tqdm(pool.imap(_aux_fn, inputs), total=len(scenes)))
