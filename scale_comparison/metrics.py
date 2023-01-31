@@ -404,15 +404,17 @@ def compute_scene_clutter(
     indoor_islands = kwargs['indoor_islands']
     navigable_area = kwargs['navigable_area']
     outdoor_islands = kwargs['outdoor_islands']
-    indoor_navmesh_vertices = [np.array(hsim.pathfinder.build_navmesh_vertices(island_index)) for island_index in indoor_islands]
-    indoor_navmesh_vertices = np.concatenate(indoor_navmesh_vertices, axis=0)
-    outdoor_navmesh_vertices = [np.array(hsim.pathfinder.build_navmesh_vertices(island_index)) for island_index in outdoor_islands]
-    outdoor_navmesh_vertices = np.concatenate(outdoor_navmesh_vertices, axis=0)
     ## transforming to trimesh not necessary for FP scenes (scene GLBs already have trimesh/standard transform)
     # navmesh_vertices = transform_coordinates_hsim_to_trimesh(navmesh_vertices)
     ## three consecutive vertices form a triangle face
+    indoor_navmesh_vertices = [np.array(hsim.pathfinder.build_navmesh_vertices(island_index)) for island_index in indoor_islands]
+    indoor_navmesh_vertices = np.concatenate(indoor_navmesh_vertices, axis=0)
     indoor_scene_clutter = compute_scene_clutter_impl(trimesh_scene, indoor_navmesh_vertices, navigable_area['indoor_navigable_area'], closeness_thresh=closeness_thresh, navmesh_id=f'{scene_id}_indoor')
-    outdoor_scene_clutter = compute_scene_clutter_impl(trimesh_scene, outdoor_navmesh_vertices, navigable_area['outdoor_navigable_area'], closeness_thresh=closeness_thresh, navmesh_id=f'{scene_id}_outdoor')
+    outdoor_scene_clutter = 0.0
+    if len(outdoor_islands):
+        outdoor_navmesh_vertices = [np.array(hsim.pathfinder.build_navmesh_vertices(island_index)) for island_index in outdoor_islands]
+        outdoor_navmesh_vertices = np.concatenate(outdoor_navmesh_vertices, axis=0)
+        outdoor_scene_clutter = compute_scene_clutter_impl(trimesh_scene, outdoor_navmesh_vertices, navigable_area['outdoor_navigable_area'], closeness_thresh=closeness_thresh, navmesh_id=f'{scene_id}_outdoor')
     total_scene_clutter = compute_scene_clutter_impl(trimesh_scene, total_navmesh_vertices, navigable_area['total_navigable_area'], closeness_thresh=closeness_thresh, navmesh_id=f'{scene_id}_total')
 
     clutter = {
@@ -495,8 +497,10 @@ def compute_floor_area(
     outdoor_islands = kwargs['outdoor_islands']
     indoor_floor_extents = get_floor_navigable_extents(hsim, islands=indoor_islands, num_points_to_sample=2000)
     indoor_floor_area = compute_floor_area_impl(indoor_floor_extents, mesh_vertices, scene_id, floor_limit=floor_limit)
-    outdoor_floor_extents = get_floor_navigable_extents(hsim, islands=outdoor_islands, num_points_to_sample=2000)
-    outdoor_floor_area = compute_floor_area_impl(outdoor_floor_extents, mesh_vertices, scene_id, floor_limit=floor_limit)
+    outdoor_floor_area = 0.0
+    if len(outdoor_islands):
+        outdoor_floor_extents = get_floor_navigable_extents(hsim, islands=outdoor_islands, num_points_to_sample=2000)
+        outdoor_floor_area = compute_floor_area_impl(outdoor_floor_extents, mesh_vertices, scene_id, floor_limit=floor_limit)
     total_floor_extents = get_floor_navigable_extents(hsim, islands=[-1], num_points_to_sample=20000)
     total_floor_area = compute_floor_area_impl(total_floor_extents, mesh_vertices, scene_id, floor_limit=floor_limit)
     floor_area = {
