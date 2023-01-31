@@ -20,6 +20,7 @@ from PIL import Image
 Image.MAX_IMAGE_PIXELS = 1000000000
 
 from typing import Any, Callable, Dict, List
+import pdb
 
 from metrics import (
     compute_floor_area,
@@ -108,7 +109,7 @@ def compute_metrics(
     metric_values = {}
     navmesh_classification_results, indoor_islands = compute_navmesh_island_classifications(hsim)
     for metric in metrics:
-        metric_values[metric] = METRIC_TO_FN_MAP[metric](hsim, trimesh_scene, scene_id, indoor_islands=indoor_islands)
+        metric_values[metric] = METRIC_TO_FN_MAP[metric](hsim, trimesh_scene, scene_id, indoor_islands=indoor_islands, navigable_area=metric_values.get('navigable_area'))
     metric_values["scene"] = scene_path.split("/")[-1].split(".")[0]
     hsim.close()
     return metric_values
@@ -164,14 +165,23 @@ if __name__ == "__main__":
     
     stats = pd.DataFrame(stats)
     stats.set_index("scene", inplace=True)
+    for column in stats.columns:
+        stats = pd.concat([stats, stats[column].apply(pd.Series)], axis=1)
+        stats.drop(columns=column, inplace=True)
     print("============= Metrics =============")
     print(f"Number of scenes: {len(scenes)}")
     for metric in args.metrics:
         if metric in METRICS_TO_AVERAGE:
-            v = stats[metric].to_numpy().mean().item()
+            indoor_v = stats[f'indoor_{metric}'].to_numpy().mean().item()
+            outdoor_v = stats[f'outdoor_{metric}'].to_numpy().mean().item()
+            total_v = stats[f'total_{metric}'].to_numpy().mean().item()
         else:
-            v = stats[metric].to_numpy().sum().item()
-        print(f"{metric:<30s} | {v:.3f}")
+            indoor_v = stats[f'indoor_{metric}'].to_numpy().sum().item()
+            outdoor_v = stats[f'outdoor_{metric}'].to_numpy().sum().item()
+            total_v = stats[f'total_{metric}'].to_numpy().sum().item()
+        print(f"indoor_{metric:<30s} | {indoor_v:.3f}")
+        print(f"outdoor_{metric:<30s} | {outdoor_v:.3f}")
+        print(f"total_{metric:<30s} | {total_v:.3f}")
 
     if args.save_path != "":
         stats.to_csv(args.save_path, sep="\t")
