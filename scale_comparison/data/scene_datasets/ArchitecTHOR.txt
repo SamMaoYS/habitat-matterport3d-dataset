@@ -1,0 +1,10 @@
+ArchitecTHOR-Test-00
+ArchitecTHOR-Test-01
+ArchitecTHOR-Test-02
+ArchitecTHOR-Test-03
+ArchitecTHOR-Test-04
+ArchitecTHOR-Val-00
+ArchitecTHOR-Val-01
+ArchitecTHOR-Val-02
+ArchitecTHOR-Val-03
+ArchitecTHOR-Val-04
