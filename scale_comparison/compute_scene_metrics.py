@@ -110,7 +110,6 @@ def compute_metrics(
     metric_values = {}
     navmesh_classification_results, indoor_islands = compute_navmesh_island_classifications(hsim)
     island_indices = np.arange(hsim.pathfinder.num_islands)
-    pdb.set_trace()
     outdoor_islands = np.setdiff1d(island_indices, indoor_islands)
     if len(outdoor_islands):
         ceiling_islands = get_ceiling_islands(hsim, outdoor_islands, trimesh_scene)
@@ -124,7 +123,14 @@ def compute_metrics(
 
 
 def _aux_fn(inputs: Any) -> Any:
-    return compute_metrics(*inputs)
+    print('########################################################\n')
+    print(f'scene{inputs[0]}\n')
+    try:
+        results = compute_metrics(*inputs)
+    except Exception as e:
+        results = {"scene": inputs[0]}
+        raise e
+    return results
 
 
 if __name__ == "__main__":
@@ -134,9 +140,10 @@ if __name__ == "__main__":
     )
     parser.add_argument("--metrics", type=str, nargs="+", default=VALID_METRICS)
     parser.add_argument("--filter-scenes", type=str, default="")
+    parser.add_argument("--scene-id", type=str, default="")
     parser.add_argument("--save-path", type=str, default="")
     parser.add_argument("--scene-dataset-cfg", type=str, required=True)
-    parser.add_argument("--scan-patterns", type=str, nargs="+", default=["**/*.json"])
+    parser.add_argument("--scan-patterns", type=str, nargs="+", default=["**/*.stage_config.json"])
     parser.add_argument("--voxel-size", type=float, default=0.1)
     parser.add_argument("--n-processes", type=int, default=4)
     parser.add_argument("--verbose", action="store_true", default=False)
@@ -147,7 +154,7 @@ if __name__ == "__main__":
     for scan_pattern in args.scan_patterns:
         scenes += glob.glob(f"{args.dataset_root}/{scan_pattern}", recursive=True)
     if args.filter_scenes != "":
-        scenes = get_filtered_scenes(scenes, args.filter_scenes)
+        scenes = get_filtered_scenes(scenes, args.filter_scenes, args.scene_id)
     scenes = sorted(scenes)
     # Filter out basis scenes
     scenes = [s for s in scenes if ".basis." not in s]
@@ -164,9 +171,8 @@ if __name__ == "__main__":
     if args.n_processes == 1:
         stats = []
         num_scenes = len(scenes)
-        for i in range(num_scenes):
+        for i in tqdm.tqdm(range(num_scenes)):
             stats.append(_aux_fn(inputs[i]))
-            break
     else:
         pool = context.Pool(processes=args.n_processes, maxtasksperchild=2)
         stats = list(tqdm.tqdm(pool.imap(_aux_fn, inputs), total=len(scenes)))
@@ -192,4 +198,8 @@ if __name__ == "__main__":
         print(f"total_{metric:<30s} | {total_v:.3f}")
 
     if args.save_path != "":
-        stats.to_csv(args.save_path, sep="\t")
+        if args.scene_id:
+            output_path = os.path.splitext(args.save_path)[0] + f'_{args.scene_id}' + os.path.splitext(args.save_path)[-1]
+            stats.to_csv(output_path, sep="\t")
+        else:
+            stats.to_csv(args.save_path, sep="\t")
