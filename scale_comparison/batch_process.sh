@@ -1,11 +1,11 @@
 #!/bin/bash
 
 SCRIPT=compute_scene_metrics.py
-DATASET_ROOT=data/scene_datasets/fphab-v0.2.0
-DATASET_CFG=hab-fp.scene_dataset_config.json
-OUTPUT_PATH=data/fphab_metrics/fphab_metrics.csv
-SCENE_IDS=data/scene_datasets/fphab.txt
-PARALLEL_N=3
+DATASET_ROOT=data/scene_datasets/ai2thor-hab-v0.0.9
+DATASET_CFG=ai2thor.scene_dataset_config.json
+OUTPUT_PATH=data/ai2thor_metrics/procthor_metrics.csv
+SCENE_IDS=data/scene_datasets/ProcTHOR.txt
+PARALLEL_N=16
 
 echo "===================================="
 echo "Processing dataset ..."
