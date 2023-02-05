@@ -16,6 +16,7 @@ import pandas as pd
 import tqdm
 import trimesh
 from PIL import Image
+from scipy.spatial.transform import Rotation as R
 
 Image.MAX_IMAGE_PIXELS = 1000000000
 
@@ -106,6 +107,9 @@ def compute_metrics(
     trimesh_scene = trimesh.Trimesh()
     trimesh_scene.vertices = np.array(o3d_scene.vertices)
     trimesh_scene.faces = np.array(o3d_scene.triangles)
+    transform = np.eye(4)
+    transform[:3,:3] = R.from_rotvec(-np.pi/2.0 * np.array([0.0, 1, 0])).as_matrix()
+    trimesh_scene.apply_transform(transform)
 
     metric_values = {}
     navmesh_classification_results, indoor_islands = compute_navmesh_island_classifications(hsim)

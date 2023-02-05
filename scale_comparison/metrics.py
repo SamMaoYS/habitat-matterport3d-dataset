@@ -335,7 +335,8 @@ def compute_scene_clutter_impl(
         navmesh_id = kwargs['navmesh_id']
         from visualization import Visualizer
         viz = Visualizer()
-        scene_pcd = trimesh.PointCloud(vertices=trimesh_scene.vertices, colors=[0, 255, 0])
+        samples, _ = trimesh.sample.sample_surface(trimesh_scene, 10000)
+        scene_pcd = trimesh.PointCloud(vertices=samples, colors=[0, 255, 0])
         viz.add_geometry(scene_pcd)
         viz.add_geometry(navmesh)
         color, _ = viz.render()
