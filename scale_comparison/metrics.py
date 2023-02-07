@@ -446,7 +446,10 @@ def compute_floor_area_impl(
         # floor_convex_hull = ConvexHull(mesh_vertices[mask, :2])
         points = mesh_vertices[mask][:, [0, 2]]
         if len(points) > 0:
-            floor_convex_hull = ConvexHull(points)
+            try:
+                floor_convex_hull = ConvexHull(points)
+            except:
+                continue
             visualization = False
             if visualization:
                 import matplotlib.pyplot as plt

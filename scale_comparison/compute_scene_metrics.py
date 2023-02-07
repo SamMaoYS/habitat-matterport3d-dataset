@@ -55,6 +55,58 @@ METRIC_TO_FN_MAP: Dict[str, Callable] = {
 
 METRICS_TO_AVERAGE: List[str] = ["navigation_complexity", "scene_clutter"]
 
+def read_json(filepath):
+    with open(filepath, "r") as f:
+        data = json.load(f)
+    return data
+
+def get_geometry_configs(scene_instance_path, scene_dataset_cfg):
+    geo_cfg = {}
+    config_root = os.path.dirname(scene_dataset_cfg) + '/configs'
+    scene_instance = read_json(scene_instance_path)
+    stage_json = config_root + '/' + scene_instance['stage_instance']['template_name'] + '.stage_config.json'
+    stage_cfg = read_json(stage_json)
+    stage_geo_path = os.path.normpath(os.path.join(stage_json, '..', stage_cfg['render_asset']))
+    geo_cfg[stage_geo_path] = {
+        'up': stage_cfg['up'],
+        'front': stage_cfg['front'],
+        'translation': [0,0,0],
+        'rotation': [1,0,0,0],
+        'scale': [1,1,1],
+    }
+    object_instances = scene_instance['object_instances']
+    for object_instance in object_instances:
+        object_json = config_root + '/' + object_instance['template_name'] + '.object_config.json'
+        object_cfg = read_json(object_json)
+        object_geo_path = os.path.normpath(os.path.join(object_json, '..', object_cfg['render_asset']))
+        geo_cfg[object_geo_path] = {
+            'up': object_cfg['up'],
+            'front': object_cfg['front'],
+            'translation': object_instance['translation'],
+            'rotation': object_instance['rotation'],
+            'scale': object_instance['non_uniform_scale'],
+        }
+    return geo_cfg
+
+def get_transformation(geo_cfg):
+    front = np.asarray(geo_cfg['front'])
+    front = front / np.linalg.norm(front)
+    up = np.asarray(geo_cfg['up'])
+    up = up / np.linalg.norm(up)
+    right = np.cross(up, front)
+    pose = np.eye(4)
+    pose[:3, :3] = np.stack([-right, up, -front], axis=0)
+    
+    transform = np.eye(4)
+    translation = geo_cfg['translation']
+    transform[:3, 3] = translation
+    quat = geo_cfg['rotation']
+    r = R.from_quat([quat[1], quat[2], quat[3], quat[0]])
+    rotation = r.as_matrix()
+    transform[:3, :3] = rotation
+    scale = geo_cfg['scale']
+    transform[:3, :3] = transform[:3, :3].dot(np.diag(scale))
+    return pose.dot(transform)
 
 def compute_metrics(
     scene_path: str,
@@ -78,20 +130,30 @@ def compute_metrics(
     for metric in metrics:
         assert metric in VALID_METRICS
     # load scene in habitat_simulator and trimesh
-    scene_id = scene_path.split("/")[-1].replace(".stage_config.json", "")
+    scene_id = scene_path.split("/")[-1].replace(".scene_instance.json", "")
     hsim = robust_load_sim(scene_id, scene_dataset_cfg)
     # grabbing FP scene glbs from stage file
     with open(scene_path, "r") as f:
         scene_json = json.load(f)
-    scene_glb_path = os.path.join(
-        os.path.dirname(scene_path), scene_json["render_asset"]
-    )
-    trimesh_scene = trimesh.load(scene_glb_path)
+    geometry_configs = get_geometry_configs(scene_path, scene_dataset_cfg)
+    # scene_glb_path = os.path.join(
+    #     os.path.dirname(scene_path), scene_json["render_asset"]
+    # )
+    triangles = None
+    for geometry_path, geometry_cfg in geometry_configs.items():
+        trimesh_geo = trimesh.load(geometry_path)
+        tmp_triangles = trimesh_geo.triangles
+        transformation = get_transformation(geometry_cfg)
+        tmp_triangles = tmp_triangles.dot(transformation[:3, :3].transpose()) + transformation[:3, 3]
+        if triangles is None:
+            triangles = tmp_triangles
+        else:
+            triangles = np.concatenate((triangles, tmp_triangles), axis=0)
 
     # Simplify scene-mesh for faster metric computation
     # Does not impact the final metrics much
     o3d_scene = o3d.geometry.TriangleMesh()
-    vertices = np.array(trimesh_scene.triangles).reshape(-1, 3)
+    vertices = np.array(triangles).reshape(-1, 3)
     faces = np.arange(0, len(vertices)).reshape(-1, 3)
     o3d_scene.vertices = o3d.utility.Vector3dVector(vertices)
     o3d_scene.triangles = o3d.utility.Vector3iVector(faces)
@@ -107,9 +169,12 @@ def compute_metrics(
     trimesh_scene = trimesh.Trimesh()
     trimesh_scene.vertices = np.array(o3d_scene.vertices)
     trimesh_scene.faces = np.array(o3d_scene.triangles)
-    transform = np.eye(4)
-    transform[:3,:3] = R.from_rotvec(-np.pi/2.0 * np.array([0.0, 1, 0])).as_matrix()
-    trimesh_scene.apply_transform(transform)
+    export_scenes = True
+    if export_scenes:
+        dataset_name = os.path.basename(os.path.dirname(scene_dataset_cfg))
+        output_scene_path = os.path.join('scenes', dataset_name, f'{scene_id}.glb')
+        os.makedirs(os.path.dirname(output_scene_path), exist_ok=True)
+        trimesh_scene.export(output_scene_path)
 
     metric_values = {}
     navmesh_classification_results, indoor_islands = compute_navmesh_island_classifications(hsim)
@@ -147,7 +212,7 @@ if __name__ == "__main__":
     parser.add_argument("--scene-id", type=str, default="")
     parser.add_argument("--save-path", type=str, default="")
     parser.add_argument("--scene-dataset-cfg", type=str, required=True)
-    parser.add_argument("--scan-patterns", type=str, nargs="+", default=["**/*.stage_config.json"])
+    parser.add_argument("--scan-patterns", type=str, nargs="+", default=["**/*.scene_instance.json"])
     parser.add_argument("--voxel-size", type=float, default=0.1)
     parser.add_argument("--n-processes", type=int, default=4)
     parser.add_argument("--verbose", action="store_true", default=False)
