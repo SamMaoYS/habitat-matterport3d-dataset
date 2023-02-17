@@ -60,7 +60,7 @@ def robust_load_sim(
     return hsim
 
 
-def get_filtered_scenes(scenes: List[str], filter_scenes_path: str, scene_id: str) -> List[str]:
+def get_filtered_scenes(scenes: List[str], filter_scenes_path: str, scene_id: str='') -> List[str]:
     """
     Filter scenes to only include valid scenes.
     """

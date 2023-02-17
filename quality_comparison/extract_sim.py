@@ -19,6 +19,7 @@ import imageio
 import numpy as np
 import tqdm
 from sklearn.cluster import DBSCAN
+from scale_comparison.metrics import compute_navmesh_island_classifications
 
 from common.utils import (
     convert_heading_to_quaternion,
@@ -37,7 +38,8 @@ def make_habitat_configuration(
     backend_cfg = habitat_sim.SimulatorConfiguration()
     if stage_json_path is not None:
         backend_cfg.scene_dataset_config_file = stage_json_path
-        backend_cfg.scene_id = "habitat/" + scene_path.split("/")[-1]
+        backend_cfg.scene_id = scene_path.split("/")[-1].split('.glb')[0]
+        backend_cfg.enable_physics = True
     else:
         backend_cfg.scene_id = scene_path
 
@@ -136,11 +138,12 @@ def get_navmesh_extents_at_y(
 
 
 def get_dense_navmesh_vertices(
-    sim: habitat_sim.Simulator, sampling_resolution: float = 0.5
+    sim: habitat_sim.Simulator, sampling_resolution: float = 0.5, indoor=True
 ) -> np.ndarray:
 
     navmesh_vertices = []
     floor_extents = get_floor_heights(sim)
+    navmesh_classification_results, indoor_islands = compute_navmesh_island_classifications(sim)
     for fext in floor_extents:
         l_bound, u_bound = get_navmesh_extents_at_y(
             sim, y_bounds=(fext["min"] - 0.5, fext["max"] + 0.5)
@@ -149,8 +152,10 @@ def get_dense_navmesh_vertices(
         y = fext["mean"]
         z_range = np.arange(l_bound[2].item(), u_bound[2].item(), sampling_resolution)
         for x, z in itertools.product(x_range, z_range):
-            if sim.pathfinder.is_navigable(np.array([x, y, z])):
-                navmesh_vertices.append((np.array([x, y, z])))
+            pt = np.array([x, y, z])
+            if sim.pathfinder.is_navigable(pt):
+                if indoor and sim.pathfinder.get_island(pt) in indoor_islands:
+                    navmesh_vertices.append((pt))
     if len(navmesh_vertices) > 0:
         navmesh_vertices = np.stack(navmesh_vertices, axis=0)
     else:
@@ -234,7 +239,7 @@ if __name__ == "__main__":
         "--dataset-name",
         type=str,
         required=True,
-        choices=["gibson", "hm3d", "mp3d", "replica", "scannet", "robothor"],
+        choices=["gibson", "hm3d", "mp3d", "replica", "scannet", "robothor", "floorplanner", "procthor"],
     )
     parser.add_argument("--stage-json-path", type=str, default=None)
     parser.add_argument("--num-processes", type=int, default=8)
@@ -245,7 +250,7 @@ if __name__ == "__main__":
     random.seed(123)
     np.random.seed(123)
 
-    if args.dataset_name in ["gibson", "mp3d", "scannet", "robothor"]:
+    if args.dataset_name in ["gibson", "mp3d", "scannet", "robothor", "floorplanner", "procthor"]:
         scenes = glob.glob(f"{args.dataset_dir}/**/*.glb", recursive=True)
     elif args.dataset_name == "hm3d":
         scenes = []
@@ -258,7 +263,7 @@ if __name__ == "__main__":
         scenes = get_filtered_scenes(scenes, args.filter_scenes)
     scenes = sorted(scenes)
     # Filter out basis scenes
-    scenes = [s for s in scenes if ".basis." not in s]
+    scenes = [s for s in scenes if ".semantic." not in s]
 
     print(f"Number of scenes in {args.dataset_dir}: {len(scenes)}")
 
@@ -282,10 +287,14 @@ if __name__ == "__main__":
     os.makedirs(args.rgb_save_dir, exist_ok=True)
     os.makedirs(args.depth_save_dir, exist_ok=True)
 
-    context = mp.get_context("forkserver")
-    pool = context.Pool(processes=args.num_processes, maxtasksperchild=2)
-
-    all_paths = list(tqdm.tqdm(pool.imap(_aux_fn, inputs), total=len(inputs)))
+    if args.num_processes == 1:
+        all_paths = []
+        for input in inputs:
+            all_paths.append(_aux_fn(input))
+    else:
+        context = mp.get_context("forkserver")
+        pool = context.Pool(processes=args.num_processes, maxtasksperchild=2)
+        all_paths = list(tqdm.tqdm(pool.imap(_aux_fn, inputs), total=len(inputs)))
 
     # Create metadata
     metadata = []
