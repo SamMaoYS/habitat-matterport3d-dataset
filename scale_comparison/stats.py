@@ -72,6 +72,10 @@ def main(args):
     df_list = []
     for metric_file in metric_files:
         tmp_df = pd.read_csv(metric_file, sep="\t")
+        # scene_name = tmp_df['scene'][0]
+        # scene_idx = int(scene_name.replace('_physics', '').replace('FloorPlan', ''))
+        # if scene_idx >= 500:
+        #     continue
         df_list.append(tmp_df)
     df = pd.concat(df_list, ignore_index=True)
     df.to_csv(os.path.join(args.output_dir, args.dataset + '_metrics.csv'), index=False)

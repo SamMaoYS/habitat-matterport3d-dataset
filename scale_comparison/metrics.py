@@ -191,6 +191,17 @@ def get_ceiling_islands(
             ceiling_islands.append(island_index)
     return ceiling_islands
 
+def get_small_islands(
+    hsim: habitat_sim.Simulator,
+    islands: list,
+    radius_limit: float = 3.5,
+) -> list:
+    small_islands = []
+    for island in islands:
+        if hsim.pathfinder.island_radius(island) < radius_limit:
+            small_islands.append(island)
+    return small_islands
+
 def get_floor_navigable_extents(
     hsim: habitat_sim.Simulator, *args: Any, num_points_to_sample: int = 20000, **kwargs: Any
 ) -> List[Dict[str, float]]:
@@ -330,7 +341,7 @@ def compute_scene_clutter_impl(
     navmesh = trimesh.Trimesh(vertices=navmesh_vertices, faces=navmesh_faces)
 
     # visualization
-    visualization = False
+    visualization = True
     if visualization:
         navmesh_id = kwargs['navmesh_id']
         from visualization import Visualizer
@@ -409,19 +420,28 @@ def compute_scene_clutter(
     # navmesh_vertices = transform_coordinates_hsim_to_trimesh(navmesh_vertices)
     ## three consecutive vertices form a triangle face
     indoor_navmesh_vertices = [np.array(hsim.pathfinder.build_navmesh_vertices(island_index)) for island_index in indoor_islands]
-    indoor_navmesh_vertices = np.concatenate(indoor_navmesh_vertices, axis=0)
-    indoor_scene_clutter = compute_scene_clutter_impl(trimesh_scene, indoor_navmesh_vertices, navigable_area['indoor_navigable_area'], closeness_thresh=closeness_thresh, navmesh_id=f'{scene_id}_indoor')
+    if len(indoor_navmesh_vertices) > 0:
+        indoor_navmesh_vertices = np.concatenate(indoor_navmesh_vertices, axis=0)
+        indoor_scene_clutter = compute_scene_clutter_impl(trimesh_scene, indoor_navmesh_vertices, navigable_area['indoor_navigable_area'], closeness_thresh=closeness_thresh, navmesh_id=f'{scene_id}_indoor')
+    else:
+        indoor_scene_clutter = 0.0
     outdoor_scene_clutter = 0.0
     outdoor_navmesh_vertices = []
     if len(outdoor_islands):
         outdoor_navmesh_vertices = [np.array(hsim.pathfinder.build_navmesh_vertices(island_index)) for island_index in outdoor_islands]
         outdoor_navmesh_vertices = np.concatenate(outdoor_navmesh_vertices, axis=0)
         outdoor_scene_clutter = compute_scene_clutter_impl(trimesh_scene, outdoor_navmesh_vertices, navigable_area['outdoor_navigable_area'], closeness_thresh=closeness_thresh, navmesh_id=f'{scene_id}_outdoor')
-    if len(outdoor_navmesh_vertices) > 0:
+    if len(outdoor_navmesh_vertices) > 0 and len(indoor_navmesh_vertices) > 0:
         total_navmesh_vertices = np.concatenate([indoor_navmesh_vertices, outdoor_navmesh_vertices], axis=0)
+    elif len(indoor_navmesh_vertices) == 0:
+        total_navmesh_vertices = outdoor_navmesh_vertices
     else:
         total_navmesh_vertices = indoor_navmesh_vertices
-    total_scene_clutter = compute_scene_clutter_impl(trimesh_scene, total_navmesh_vertices, navigable_area['total_navigable_area'], closeness_thresh=closeness_thresh, navmesh_id=f'{scene_id}_total')
+    
+    if len(indoor_navmesh_vertices) > 0:
+        total_scene_clutter = compute_scene_clutter_impl(trimesh_scene, total_navmesh_vertices, navigable_area['total_navigable_area'], closeness_thresh=closeness_thresh, navmesh_id=f'{scene_id}_total')
+    else:
+        total_scene_clutter = 0.0
 
     clutter = {
         'indoor_scene_clutter': indoor_scene_clutter,
@@ -450,7 +470,46 @@ def compute_floor_area_impl(
                 floor_convex_hull = ConvexHull(points)
             except:
                 continue
-            visualization = False
+            visualization = True
+            if visualization:
+                import matplotlib.pyplot as plt
+                fig = plt.figure(figsize=(5, 5))
+                ax = fig.add_subplot(111)
+                plt.plot(points[:, 0], points[:, 1], '.')
+                plt.plot(points[floor_convex_hull.vertices, 0],
+                        points[floor_convex_hull.vertices, 1], 'r--', lw=4)
+                plt.plot(points[(floor_convex_hull.vertices[-1], floor_convex_hull.vertices[0]), 0],
+                        points[(floor_convex_hull.vertices[-1], floor_convex_hull.vertices[0]), 1], 'r--', lw=4)
+                plt.plot(points[floor_convex_hull.vertices[:], 0], points[floor_convex_hull.vertices[:], 1],
+                        marker='o', markersize=7, color="red")
+                ax.set_aspect('equal', adjustable='box')
+                os.makedirs('floor-area', exist_ok=True)
+                fig.savefig(f'floor-area/{scene_id}.png', dpi=fig.dpi, bbox_inches='tight')
+                plt.cla()
+            # convex_hull.volume computes the area for 2D convex hull
+            floor_area += floor_convex_hull.volume
+        else:
+            print(f'{scene_id} has 0 floor area')
+    return floor_area
+
+def compute_floor_area_from_nav(
+    hsim: habitat_sim.Simulator,
+    island_indices: np.ndarray,
+    scene_id: str,
+    **kwargs: Any,
+) -> float:
+    # Y (not Z) axis in trimesh is vertically upward for FP scenes
+    floor_area = 0.0
+    for island_index in island_indices:
+        mesh_vertices = np.array(hsim.pathfinder.build_navmesh_vertices(island_index))
+        # floor_convex_hull = ConvexHull(mesh_vertices[mask, :2])
+        points = mesh_vertices[:, [0, 2]]
+        if len(points) > 0:
+            try:
+                floor_convex_hull = ConvexHull(points)
+            except:
+                continue
+            visualization = True
             if visualization:
                 import matplotlib.pyplot as plt
                 fig = plt.figure(figsize=(5, 5))
@@ -504,12 +563,14 @@ def compute_floor_area(
     mesh_vertices = trimesh_scene.triangles.reshape(-1, 3)
     indoor_islands = kwargs['indoor_islands']
     outdoor_islands = list(kwargs['outdoor_islands'])
-    indoor_floor_extents = get_floor_navigable_extents(hsim, islands=indoor_islands, num_points_to_sample=2000)
-    indoor_floor_area = compute_floor_area_impl(indoor_floor_extents, mesh_vertices, scene_id, floor_limit=floor_limit)
+    # indoor_floor_extents = get_floor_navigable_extents(hsim, islands=indoor_islands, num_points_to_sample=2000)
+    # indoor_floor_area = compute_floor_area_impl(indoor_floor_extents, mesh_vertices, scene_id, floor_limit=floor_limit)
+    indoor_floor_area = compute_floor_area_from_nav(hsim, indoor_islands, scene_id)
     outdoor_floor_area = 0.0
     if len(outdoor_islands):
-        outdoor_floor_extents = get_floor_navigable_extents(hsim, islands=outdoor_islands, num_points_to_sample=2000)
-        outdoor_floor_area = compute_floor_area_impl(outdoor_floor_extents, mesh_vertices, scene_id, floor_limit=floor_limit)
+        # outdoor_floor_extents = get_floor_navigable_extents(hsim, islands=outdoor_islands, num_points_to_sample=2000)
+        # outdoor_floor_area = compute_floor_area_impl(outdoor_floor_extents, mesh_vertices, scene_id, floor_limit=floor_limit)
+        outdoor_floor_area = compute_floor_area_from_nav(hsim, outdoor_islands, scene_id)
     total_floor_extents = get_floor_navigable_extents(hsim, islands=indoor_islands+outdoor_islands, num_points_to_sample=2000)
     total_floor_area = compute_floor_area_impl(total_floor_extents, mesh_vertices, scene_id, floor_limit=floor_limit)
     floor_area = {

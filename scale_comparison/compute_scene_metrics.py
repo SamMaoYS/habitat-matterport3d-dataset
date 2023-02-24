@@ -30,6 +30,7 @@ from metrics import (
     compute_scene_clutter,
     compute_navmesh_island_classifications,
     get_ceiling_islands,
+    get_small_islands
 )
 
 from common.utils import get_filtered_scenes, robust_load_sim
@@ -62,7 +63,7 @@ def read_json(filepath):
 
 def get_geometry_configs(scene_instance_path, scene_dataset_cfg):
     geo_cfg = {}
-    config_root = os.path.dirname(scene_dataset_cfg) + '/configs'
+    config_root = os.path.dirname(scene_instance_path).split('/scenes')[0]
     scene_instance = read_json(scene_instance_path)
     stage_json = config_root + '/' + scene_instance['stage_instance']['template_name'] + '.stage_config.json'
     stage_cfg = read_json(stage_json)
@@ -77,6 +78,8 @@ def get_geometry_configs(scene_instance_path, scene_dataset_cfg):
     object_instances = scene_instance['object_instances']
     for object_instance in object_instances:
         object_json = config_root + '/' + object_instance['template_name'] + '.object_config.json'
+        if not os.path.exists(object_json):
+            continue
         object_cfg = read_json(object_json)
         object_geo_path = os.path.normpath(os.path.join(object_json, '..', object_cfg['render_asset']))
         geo_cfg[object_geo_path] = {
@@ -184,6 +187,13 @@ def compute_metrics(
         ceiling_islands = get_ceiling_islands(hsim, outdoor_islands, trimesh_scene)
         # remove ceiling islands
         outdoor_islands = np.setdiff1d(outdoor_islands, ceiling_islands)
+
+    small_islands = get_small_islands(hsim, indoor_islands)
+    indoor_islands = np.setdiff1d(indoor_islands, small_islands).tolist()
+
+    small_islands = get_small_islands(hsim, outdoor_islands)
+    outdoor_islands = np.setdiff1d(outdoor_islands, small_islands).tolist()
+    
     for metric in metrics:
         metric_values[metric] = METRIC_TO_FN_MAP[metric](hsim, trimesh_scene, scene_id, indoor_islands=indoor_islands, outdoor_islands=outdoor_islands, navigable_area=metric_values.get('navigable_area'))
     metric_values["scene"] = scene_path.split("/")[-1].split(".")[0]
