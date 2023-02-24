@@ -66,6 +66,8 @@ def get_geometry_configs(scene_instance_path, scene_dataset_cfg):
     config_root = os.path.dirname(scene_instance_path).split('/scenes')[0]
     scene_instance = read_json(scene_instance_path)
     stage_json = config_root + '/' + scene_instance['stage_instance']['template_name'] + '.stage_config.json'
+    if not os.path.isfile(stage_json):
+        stage_json = config_root + '/stages/' + scene_instance['stage_instance']['template_name'] + '.stage_config.json'
     stage_cfg = read_json(stage_json)
     stage_geo_path = os.path.normpath(os.path.join(stage_json, '..', stage_cfg['render_asset']))
     geo_cfg[stage_geo_path] = {
@@ -80,14 +82,16 @@ def get_geometry_configs(scene_instance_path, scene_dataset_cfg):
         object_json = config_root + '/' + object_instance['template_name'] + '.object_config.json'
         if not os.path.exists(object_json):
             continue
+        # if not os.path.isfile(object_json):
+        #     object_json = config_root + '/objects/' + object_instance['template_name'] + '.object_config.json'
         object_cfg = read_json(object_json)
         object_geo_path = os.path.normpath(os.path.join(object_json, '..', object_cfg['render_asset']))
         geo_cfg[object_geo_path] = {
-            'up': object_cfg['up'],
-            'front': object_cfg['front'],
+            'up': object_cfg.get('up', [0.0,1.0,0.0]),
+            'front': object_cfg.get('front', [0.0,0.0,-1.0]),
             'translation': object_instance['translation'],
             'rotation': object_instance['rotation'],
-            'scale': object_instance['non_uniform_scale'],
+            'scale': object_instance.get('non_uniform_scale', [1,1,1]),
         }
     return geo_cfg
 
@@ -180,7 +184,11 @@ def compute_metrics(
         trimesh_scene.export(output_scene_path)
 
     metric_values = {}
-    navmesh_classification_results, indoor_islands = compute_navmesh_island_classifications(hsim)
+    check_indoor = False
+    if check_indoor:
+        navmesh_classification_results, indoor_islands = compute_navmesh_island_classifications(hsim)
+    else:
+        indoor_islands = np.arange(hsim.pathfinder.num_islands).tolist()
     island_indices = np.arange(hsim.pathfinder.num_islands)
     outdoor_islands = np.setdiff1d(island_indices, indoor_islands)
     if len(outdoor_islands):
@@ -279,6 +287,8 @@ if __name__ == "__main__":
     if args.save_path != "":
         if args.scene_id:
             output_path = os.path.splitext(args.save_path)[0] + f'_{args.scene_id}' + os.path.splitext(args.save_path)[-1]
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
             stats.to_csv(output_path, sep="\t")
         else:
+            os.makedirs(os.path.dirname(args.save_path), exist_ok=True)
             stats.to_csv(args.save_path, sep="\t")
