@@ -176,7 +176,7 @@ def compute_metrics(
     trimesh_scene = trimesh.Trimesh()
     trimesh_scene.vertices = np.array(o3d_scene.vertices)
     trimesh_scene.faces = np.array(o3d_scene.triangles)
-    export_scenes = True
+    export_scenes = False
     if export_scenes:
         dataset_name = os.path.basename(os.path.dirname(scene_dataset_cfg))
         output_scene_path = os.path.join('scenes', dataset_name, f'{scene_id}.glb')
@@ -184,7 +184,7 @@ def compute_metrics(
         trimesh_scene.export(output_scene_path)
 
     metric_values = {}
-    check_indoor = False
+    check_indoor = True
     if check_indoor:
         navmesh_classification_results, indoor_islands = compute_navmesh_island_classifications(hsim)
     else:

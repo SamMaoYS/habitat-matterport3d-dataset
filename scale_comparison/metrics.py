@@ -175,7 +175,7 @@ def get_ceiling_islands(
     ceiling_threshold: float = 0.01,
 ) -> list:
     vertices = trimesh_scene.vertices
-    outdoor_floor_extents = get_floor_navigable_extents(hsim, islands=outdoor_islands, num_points_to_sample=2000)
+    outdoor_floor_extents = get_floor_navigable_extents(hsim, islands=outdoor_islands, num_points_to_sample=5000)
     max_height = 0
     for fext in outdoor_floor_extents:
         if max_height < fext["mean"]:
@@ -341,7 +341,7 @@ def compute_scene_clutter_impl(
     navmesh = trimesh.Trimesh(vertices=navmesh_vertices, faces=navmesh_faces)
 
     # visualization
-    visualization = True
+    visualization = False
     if visualization:
         navmesh_id = kwargs['navmesh_id']
         from visualization import Visualizer
@@ -470,7 +470,7 @@ def compute_floor_area_impl(
                 floor_convex_hull = ConvexHull(points)
             except:
                 continue
-            visualization = True
+            visualization = False
             if visualization:
                 import matplotlib.pyplot as plt
                 fig = plt.figure(figsize=(5, 5))
@@ -500,35 +500,37 @@ def compute_floor_area_from_nav(
 ) -> float:
     # Y (not Z) axis in trimesh is vertically upward for FP scenes
     floor_area = 0.0
+    mesh_vertices = []
     for island_index in island_indices:
-        mesh_vertices = np.array(hsim.pathfinder.build_navmesh_vertices(island_index))
+        tmp_vertices = np.array(hsim.pathfinder.build_navmesh_vertices(island_index))
+        if len(tmp_vertices) == 0:
+            continue
+        mesh_vertices.append(tmp_vertices)
         # floor_convex_hull = ConvexHull(mesh_vertices[mask, :2])
-        points = mesh_vertices[:, [0, 2]]
-        if len(points) > 0:
-            try:
-                floor_convex_hull = ConvexHull(points)
-            except:
-                continue
-            visualization = True
-            if visualization:
-                import matplotlib.pyplot as plt
-                fig = plt.figure(figsize=(5, 5))
-                ax = fig.add_subplot(111)
-                plt.plot(points[:, 0], points[:, 1], '.')
-                plt.plot(points[floor_convex_hull.vertices, 0],
-                        points[floor_convex_hull.vertices, 1], 'r--', lw=4)
-                plt.plot(points[(floor_convex_hull.vertices[-1], floor_convex_hull.vertices[0]), 0],
-                        points[(floor_convex_hull.vertices[-1], floor_convex_hull.vertices[0]), 1], 'r--', lw=4)
-                plt.plot(points[floor_convex_hull.vertices[:], 0], points[floor_convex_hull.vertices[:], 1],
-                        marker='o', markersize=7, color="red")
-                ax.set_aspect('equal', adjustable='box')
-                os.makedirs('floor-area', exist_ok=True)
-                fig.savefig(f'floor-area/{scene_id}.png', dpi=fig.dpi, bbox_inches='tight')
-                plt.cla()
-            # convex_hull.volume computes the area for 2D convex hull
-            floor_area += floor_convex_hull.volume
-        else:
-            print(f'{scene_id} has 0 floor area')
+    mesh_vertices = np.concatenate(mesh_vertices, axis=0)
+    points = mesh_vertices[:, [0, 2]]
+    if len(points) > 0:
+        floor_convex_hull = ConvexHull(points)
+        visualization = False
+        if visualization:
+            import matplotlib.pyplot as plt
+            fig = plt.figure(figsize=(5, 5))
+            ax = fig.add_subplot(111)
+            plt.plot(points[:, 0], points[:, 1], '.')
+            plt.plot(points[floor_convex_hull.vertices, 0],
+                    points[floor_convex_hull.vertices, 1], 'r--', lw=4)
+            plt.plot(points[(floor_convex_hull.vertices[-1], floor_convex_hull.vertices[0]), 0],
+                    points[(floor_convex_hull.vertices[-1], floor_convex_hull.vertices[0]), 1], 'r--', lw=4)
+            plt.plot(points[floor_convex_hull.vertices[:], 0], points[floor_convex_hull.vertices[:], 1],
+                    marker='o', markersize=7, color="red")
+            ax.set_aspect('equal', adjustable='box')
+            os.makedirs('floor-area', exist_ok=True)
+            fig.savefig(f'floor-area/{scene_id}.png', dpi=fig.dpi, bbox_inches='tight')
+            plt.cla()
+        # convex_hull.volume computes the area for 2D convex hull
+        floor_area += floor_convex_hull.volume
+    else:
+        print(f'{scene_id} has 0 floor area')
     return floor_area
     
 
@@ -563,16 +565,16 @@ def compute_floor_area(
     mesh_vertices = trimesh_scene.triangles.reshape(-1, 3)
     indoor_islands = kwargs['indoor_islands']
     outdoor_islands = list(kwargs['outdoor_islands'])
-    # indoor_floor_extents = get_floor_navigable_extents(hsim, islands=indoor_islands, num_points_to_sample=2000)
+    # indoor_floor_extents = get_floor_navigable_extents(hsim, islands=indoor_islands, num_points_to_sample=5000)
     # indoor_floor_area = compute_floor_area_impl(indoor_floor_extents, mesh_vertices, scene_id, floor_limit=floor_limit)
-    indoor_floor_area = compute_floor_area_from_nav(hsim, indoor_islands, scene_id)
+    indoor_floor_area = compute_floor_area_from_nav(hsim, indoor_islands, scene_id+'_indoor')
     outdoor_floor_area = 0.0
     if len(outdoor_islands):
-        # outdoor_floor_extents = get_floor_navigable_extents(hsim, islands=outdoor_islands, num_points_to_sample=2000)
+        # outdoor_floor_extents = get_floor_navigable_extents(hsim, islands=outdoor_islands, num_points_to_sample=5000)
         # outdoor_floor_area = compute_floor_area_impl(outdoor_floor_extents, mesh_vertices, scene_id, floor_limit=floor_limit)
-        outdoor_floor_area = compute_floor_area_from_nav(hsim, outdoor_islands, scene_id)
-    total_floor_extents = get_floor_navigable_extents(hsim, islands=indoor_islands+outdoor_islands, num_points_to_sample=2000)
-    total_floor_area = compute_floor_area_impl(total_floor_extents, mesh_vertices, scene_id, floor_limit=floor_limit)
+        outdoor_floor_area = compute_floor_area_from_nav(hsim, outdoor_islands, scene_id+'_outdoor')
+    total_floor_extents = get_floor_navigable_extents(hsim, islands=indoor_islands+outdoor_islands, num_points_to_sample=5000)
+    total_floor_area = compute_floor_area_impl(total_floor_extents, mesh_vertices, scene_id+'_total', floor_limit=floor_limit)
     floor_area = {
         'indoor_floor_area': indoor_floor_area,
         'outdoor_floor_area': outdoor_floor_area,
