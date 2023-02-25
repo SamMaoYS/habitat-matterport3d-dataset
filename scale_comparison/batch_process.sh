@@ -1,9 +1,9 @@
 #!/bin/bash
 
 SCRIPT=compute_scene_metrics.py
-DATASET_ROOT=data/scene_datasets/fphab-v0.2.0
-DATASET_CFG=hab-fp.scene_dataset_config.json
-OUTPUT_PATH=data/fp_metrics/fp_metrics.csv
+DATASET_ROOT=data/scene_datasets/fphab-v0.2.2
+DATASET_CFG=fphab.scene_dataset_config.json
+OUTPUT_PATH=data/fp_metrics_stage/fp_metrics_stage.csv
 SCENE_IDS=data/scene_datasets/fphab.txt
 PARALLEL_N=4
 

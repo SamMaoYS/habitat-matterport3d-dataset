@@ -175,7 +175,7 @@ def get_ceiling_islands(
     ceiling_threshold: float = 0.01,
 ) -> list:
     vertices = trimesh_scene.vertices
-    outdoor_floor_extents = get_floor_navigable_extents(hsim, islands=outdoor_islands, num_points_to_sample=5000)
+    outdoor_floor_extents = get_floor_navigable_extents(hsim, islands=outdoor_islands, num_points_to_sample=int(20000/len(outdoor_islands)))
     max_height = 0
     for fext in outdoor_floor_extents:
         if max_height < fext["mean"]:
@@ -271,9 +271,11 @@ def compute_navigation_complexity_impl(
 ) -> float:
     if not hsim.pathfinder.is_loaded:
         return 0.0
+    navcomplexities = []
     navcomplexity = 0.0
     num_sampled_pairs = 0
     for island_index in islands:
+        num_sampled_pairs = 0
         while num_sampled_pairs < max_pairs_to_sample:
             num_sampled_pairs += 1
             p1 = hsim.pathfinder.get_random_navigable_point(island_index=island_index)
@@ -289,7 +291,8 @@ def compute_navigation_complexity_impl(
                 if math.isinf(cur_navcomplexity):
                     continue
                 navcomplexity = max(navcomplexity, cur_navcomplexity)
-    return navcomplexity
+                navcomplexities.append(navcomplexity)
+    return navcomplexity, navcomplexities
 
 def compute_navigation_complexity(
     hsim: habitat_sim.Simulator,
@@ -315,9 +318,10 @@ def compute_navigation_complexity(
         return 0.0
     indoor_islands = kwargs['indoor_islands']
     outdoor_islands = kwargs['outdoor_islands']
-    indoor_navigation_complexity = compute_navigation_complexity_impl(hsim, indoor_islands, max_pairs_to_sample, max_trials_per_pair)
-    outdoor_navigation_complexity = compute_navigation_complexity_impl(hsim, outdoor_islands, max_pairs_to_sample, max_trials_per_pair)
+    indoor_navigation_complexity, indoor_navigation_omplexities = compute_navigation_complexity_impl(hsim, indoor_islands, max_pairs_to_sample, max_trials_per_pair)
+    outdoor_navigation_complexity, outdoor_navigation_omplexities = compute_navigation_complexity_impl(hsim, outdoor_islands, max_pairs_to_sample, max_trials_per_pair)
     # total_navigation_complexity = compute_navigation_complexity_impl(hsim, [-1])
+    total_navigation_omplexities = indoor_navigation_omplexities + outdoor_navigation_omplexities
     navcomplexity = {
         'indoor_navigation_complexity': indoor_navigation_complexity,
         'outdoor_navigation_complexity': outdoor_navigation_complexity,
@@ -506,7 +510,9 @@ def compute_floor_area_from_nav(
         if len(tmp_vertices) == 0:
             continue
         mesh_vertices.append(tmp_vertices)
-        # floor_convex_hull = ConvexHull(mesh_vertices[mask, :2])
+        # floor_convex_hull = ConvexHull(mesh_vertices[mask, :2])s
+    if len(mesh_vertices) == 0:
+        return floor_area
     mesh_vertices = np.concatenate(mesh_vertices, axis=0)
     points = mesh_vertices[:, [0, 2]]
     if len(points) > 0:
@@ -573,8 +579,9 @@ def compute_floor_area(
         # outdoor_floor_extents = get_floor_navigable_extents(hsim, islands=outdoor_islands, num_points_to_sample=5000)
         # outdoor_floor_area = compute_floor_area_impl(outdoor_floor_extents, mesh_vertices, scene_id, floor_limit=floor_limit)
         outdoor_floor_area = compute_floor_area_from_nav(hsim, outdoor_islands, scene_id+'_outdoor')
-    total_floor_extents = get_floor_navigable_extents(hsim, islands=indoor_islands+outdoor_islands, num_points_to_sample=5000)
-    total_floor_area = compute_floor_area_impl(total_floor_extents, mesh_vertices, scene_id+'_total', floor_limit=floor_limit)
+    # total_floor_extents = get_floor_navigable_extents(hsim, islands=indoor_islands+outdoor_islands, num_points_to_sample=2000)
+    # total_floor_area = compute_floor_area_impl(total_floor_extents, mesh_vertices, scene_id+'_total', floor_limit=floor_limit)
+    total_floor_area = compute_floor_area_from_nav(hsim, indoor_islands+outdoor_islands, scene_id+'_total')
     floor_area = {
         'indoor_floor_area': indoor_floor_area,
         'outdoor_floor_area': outdoor_floor_area,

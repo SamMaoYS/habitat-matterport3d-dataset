@@ -69,6 +69,7 @@ class Dataset(Enum):
 
 def main(args):
     metric_files = glob(os.path.join(args.input_dir, '*.csv'))
+    all_scenes = np.loadtxt(args.scenes, dtype=str).astype(str)
     df_list = []
     for metric_file in metric_files:
         tmp_df = pd.read_csv(metric_file, sep="\t")
@@ -78,8 +79,9 @@ def main(args):
         #     continue
         df_list.append(tmp_df)
     df = pd.concat(df_list, ignore_index=True)
+    # df = df[df['scene'].isin(all_scenes)]
     df.to_csv(os.path.join(args.output_dir, args.dataset + '_metrics.csv'), index=False)
-    all_scenes = np.loadtxt(args.scenes, dtype=str).astype(str)
+    
     processed_scenes = df.scene.unique().tolist()
     unprocessed_scenes = np.setdiff1d(all_scenes, processed_scenes)
     print(f'{len(unprocessed_scenes)} unprocessed scenes')

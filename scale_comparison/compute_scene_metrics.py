@@ -5,6 +5,8 @@
 # LICENSE file in the root directory of this source tree.
 
 import argparse
+import resource
+import sys
 import glob
 import json
 import multiprocessing as mp
@@ -40,17 +42,17 @@ os.environ["HABITAT_SIM_LOG"] = "quiet"
 
 VALID_METRICS: List[str] = [
     "navigable_area",
-    "navigation_complexity",
-    "scene_clutter",
-    "floor_area",
+    # "navigation_complexity",
+    # "scene_clutter",
+    # "floor_area",
 ]
 
 
 METRIC_TO_FN_MAP: Dict[str, Callable] = {
     "navigable_area": compute_navigable_area,
-    "navigation_complexity": compute_navigation_complexity,
-    "scene_clutter": compute_scene_clutter,
-    "floor_area": compute_floor_area,
+    # "navigation_complexity": compute_navigation_complexity,
+    # "scene_clutter": compute_scene_clutter,
+    # "floor_area": compute_floor_area,
 }
 
 
@@ -65,9 +67,7 @@ def get_geometry_configs(scene_instance_path, scene_dataset_cfg):
     geo_cfg = {}
     config_root = os.path.dirname(scene_instance_path).split('/scenes')[0]
     scene_instance = read_json(scene_instance_path)
-    stage_json = config_root + '/' + scene_instance['stage_instance']['template_name'] + '.stage_config.json'
-    if not os.path.isfile(stage_json):
-        stage_json = config_root + '/stages/' + scene_instance['stage_instance']['template_name'] + '.stage_config.json'
+    stage_json = glob.glob(f"{config_root}/**/{scene_instance['stage_instance']['template_name'] + '.stage_config.json'}", recursive=True)[0]
     stage_cfg = read_json(stage_json)
     stage_geo_path = os.path.normpath(os.path.join(stage_json, '..', stage_cfg['render_asset']))
     geo_cfg[stage_geo_path] = {
@@ -79,9 +79,11 @@ def get_geometry_configs(scene_instance_path, scene_dataset_cfg):
     }
     object_instances = scene_instance['object_instances']
     for object_instance in object_instances:
-        object_json = config_root + '/' + object_instance['template_name'] + '.object_config.json'
-        if not os.path.exists(object_json):
+        # object_json = config_root + '/' + object_instance['template_name'] + '.object_config.json'
+        object_jsons = glob.glob(f"{config_root}/**/{object_instance['template_name'] + '.object_config.json'}", recursive=True)
+        if len(object_jsons) == 0:
             continue
+        object_json = object_jsons[0]
         # if not os.path.isfile(object_json):
         #     object_json = config_root + '/objects/' + object_instance['template_name'] + '.object_config.json'
         object_cfg = read_json(object_json)
@@ -184,7 +186,7 @@ def compute_metrics(
         trimesh_scene.export(output_scene_path)
 
     metric_values = {}
-    check_indoor = True
+    check_indoor = False
     if check_indoor:
         navmesh_classification_results, indoor_islands = compute_navmesh_island_classifications(hsim)
     else:
@@ -195,7 +197,6 @@ def compute_metrics(
         ceiling_islands = get_ceiling_islands(hsim, outdoor_islands, trimesh_scene)
         # remove ceiling islands
         outdoor_islands = np.setdiff1d(outdoor_islands, ceiling_islands)
-
     small_islands = get_small_islands(hsim, indoor_islands)
     indoor_islands = np.setdiff1d(indoor_islands, small_islands).tolist()
 
@@ -208,6 +209,33 @@ def compute_metrics(
     hsim.close()
     return metric_values
 
+# set mem limit for program
+# reference https://stackoverflow.com/questions/41105733/limit-ram-usage-to-python-program
+def set_memory_limit(percentage: float):
+    soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+    resource.setrlimit(resource.RLIMIT_AS, (get_memory() * 1024 * percentage, hard))
+
+def get_memory():
+    with open('/proc/meminfo', 'r') as mem:
+        free_memory = 0
+        for i in mem:
+            sline = i.split()
+            if str(sline[0]) in ('MemFree:', 'Buffers:', 'Cached:'):
+                free_memory += int(sline[1])
+    return free_memory
+
+def memory_limit(percentage=0.8):
+    def decorator(function):
+        def wrapper(*args, **kwargs):
+            set_memory_limit(percentage)
+            try:
+                return function(*args, **kwargs)
+            except MemoryError:
+                mem = get_memory() / 1024 /1024
+                sys.stderr.write('\n\nERROR: Memory Exception, remaining memory  %.2f GB\n' % mem)
+                sys.exit(1)
+        return wrapper
+    return decorator
 
 def _aux_fn(inputs: Any) -> Any:
     print('########################################################\n')
