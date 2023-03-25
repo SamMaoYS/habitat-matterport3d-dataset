@@ -184,6 +184,10 @@ def compute_metrics(
         trimesh_scene.export(output_scene_path)
 
     metric_values = {}
+    # if 'staging' in scene_path:
+    #     check_indoor = True
+    # else:
+    #     check_indoor = False
     check_indoor = True
     if check_indoor:
         navmesh_classification_results, indoor_islands = compute_navmesh_island_classifications(hsim)

@@ -15,6 +15,10 @@ import scipy
 import trimesh
 from scipy.spatial import ConvexHull
 from sklearn.cluster import DBSCAN
+import seaborn as sns
+import pandas as pd
+import matplotlib.pyplot as plt
+
 import pdb
 EPS = 1e-10
 
@@ -194,7 +198,7 @@ def get_ceiling_islands(
 def get_small_islands(
     hsim: habitat_sim.Simulator,
     islands: list,
-    radius_limit: float = 3.5,
+    radius_limit: float = 1.5,
 ) -> list:
     small_islands = []
     for island in islands:
@@ -273,7 +277,9 @@ def compute_navigation_complexity_impl(
         return 0.0
     navcomplexity = 0.0
     num_sampled_pairs = 0
+    navcomplexities = []
     for island_index in islands:
+        num_sampled_pairs = 0
         while num_sampled_pairs < max_pairs_to_sample:
             num_sampled_pairs += 1
             p1 = hsim.pathfinder.get_random_navigable_point(island_index=island_index)
@@ -284,12 +290,19 @@ def compute_navigation_complexity_impl(
                 # Different floors
                 if abs(p1[1] - p2[1]) > 0.5:
                     continue
+                # if np.linalg.norm(p1 - p2) < hsim.pathfinder.island_radius(island_index) / 2.0:
+                #     continue
+                if np.linalg.norm(p1 - p2) < 1.0:
+                    continue
                 cur_navcomplexity = get_navcomplexity(hsim, p1, p2)
                 # Ignore disconnected pairs
                 if math.isinf(cur_navcomplexity):
                     continue
+                # if cur_navcomplexity < 4:
+                #     continue
                 navcomplexity = max(navcomplexity, cur_navcomplexity)
-    return navcomplexity
+                navcomplexities.append(cur_navcomplexity)
+    return navcomplexity, navcomplexities
 
 def compute_navigation_complexity(
     hsim: habitat_sim.Simulator,
@@ -315,9 +328,16 @@ def compute_navigation_complexity(
         return 0.0
     indoor_islands = kwargs['indoor_islands']
     outdoor_islands = kwargs['outdoor_islands']
-    indoor_navigation_complexity = compute_navigation_complexity_impl(hsim, indoor_islands, max_pairs_to_sample, max_trials_per_pair)
-    outdoor_navigation_complexity = compute_navigation_complexity_impl(hsim, outdoor_islands, max_pairs_to_sample, max_trials_per_pair)
+    indoor_navigation_complexity, indoor_navigation_complexities = compute_navigation_complexity_impl(hsim, indoor_islands, max_pairs_to_sample, max_trials_per_pair)
+    outdoor_navigation_complexity, outdoor_navigation_complexiies = compute_navigation_complexity_impl(hsim, outdoor_islands, max_pairs_to_sample, max_trials_per_pair)
     # total_navigation_complexity = compute_navigation_complexity_impl(hsim, [-1])
+    total_navigation_complexiies = indoor_navigation_complexities + outdoor_navigation_complexiies
+
+    # df = pd.DataFrame({'complexity': indoor_navigation_complexities})
+    # sns.histplot(data=df, x="complexity", bins=30)
+    # plt.tight_layout()
+    # plt.savefig('robothor_complexity.png', bbox_inches='tight')
+
     navcomplexity = {
         'indoor_navigation_complexity': indoor_navigation_complexity,
         'outdoor_navigation_complexity': outdoor_navigation_complexity,
@@ -341,7 +361,7 @@ def compute_scene_clutter_impl(
     navmesh = trimesh.Trimesh(vertices=navmesh_vertices, faces=navmesh_faces)
 
     # visualization
-    visualization = False
+    visualization = True
     if visualization:
         navmesh_id = kwargs['navmesh_id']
         from visualization import Visualizer
@@ -470,7 +490,7 @@ def compute_floor_area_impl(
                 floor_convex_hull = ConvexHull(points)
             except:
                 continue
-            visualization = False
+            visualization = True
             if visualization:
                 import matplotlib.pyplot as plt
                 fig = plt.figure(figsize=(5, 5))
@@ -511,7 +531,7 @@ def compute_floor_area_from_nav(
     points = mesh_vertices[:, [0, 2]]
     if len(points) > 0:
         floor_convex_hull = ConvexHull(points)
-        visualization = False
+        visualization = True
         if visualization:
             import matplotlib.pyplot as plt
             fig = plt.figure(figsize=(5, 5))
@@ -573,8 +593,9 @@ def compute_floor_area(
         # outdoor_floor_extents = get_floor_navigable_extents(hsim, islands=outdoor_islands, num_points_to_sample=5000)
         # outdoor_floor_area = compute_floor_area_impl(outdoor_floor_extents, mesh_vertices, scene_id, floor_limit=floor_limit)
         outdoor_floor_area = compute_floor_area_from_nav(hsim, outdoor_islands, scene_id+'_outdoor')
-    total_floor_extents = get_floor_navigable_extents(hsim, islands=indoor_islands+outdoor_islands, num_points_to_sample=5000)
-    total_floor_area = compute_floor_area_impl(total_floor_extents, mesh_vertices, scene_id+'_total', floor_limit=floor_limit)
+    # total_floor_extents = get_floor_navigable_extents(hsim, islands=indoor_islands+outdoor_islands, num_points_to_sample=5000)
+    # total_floor_area = compute_floor_area_impl(total_floor_extents, mesh_vertices, scene_id+'_total', floor_limit=floor_limit)
+    total_floor_area = compute_floor_area_from_nav(hsim, indoor_islands+outdoor_islands, scene_id+'_total')
     floor_area = {
         'indoor_floor_area': indoor_floor_area,
         'outdoor_floor_area': outdoor_floor_area,
