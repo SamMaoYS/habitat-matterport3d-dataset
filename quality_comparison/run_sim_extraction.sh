@@ -62,21 +62,21 @@ mkdir "$MD_SAVE_ROOT"
 #    --dataset-name robothor \
 #    --stage-json-path "data/robothor.scene_dataset_config.json"
 
-# python extract_sim.py \
-#    --dataset-dir "$FP_ROOT" \
-#    --rgb-save-dir "$SAVE_ROOT"/fp_sim \
-#    --depth-save-dir "$SAVE_ROOT"/fp_sim_depth \
-#    --json-save-path "$MD_SAVE_ROOT"/fp_sim_metadata.json \
-#    --stage-json-path "data/datasets/fphab-v0.2.1/fphab.scene_dataset_config.json" \
-#    --filter-scenes "data/fphab.txt" \
-#    --dataset-name floorplanner
-
-
 python extract_sim.py \
-   --dataset-dir "$PROCTHOR_ROOT" \
-   --rgb-save-dir "$SAVE_ROOT"/procthor_sim \
-   --depth-save-dir "$SAVE_ROOT"/procthor_sim_depth \
-   --json-save-path "$MD_SAVE_ROOT"/procthor_sim_metadata.json \
-   --stage-json-path "data/datasets/ai2thor-hab-v0.0.9/ai2thor.scene_dataset_config.json" \
-   --filter-scenes "data/procthor.txt" \
-   --dataset-name procthor
+   --dataset-dir "$FP_ROOT" \
+   --rgb-save-dir "$SAVE_ROOT"/fp_sim \
+   --depth-save-dir "$SAVE_ROOT"/fp_sim_depth \
+   --json-save-path "$MD_SAVE_ROOT"/fp_sim_metadata.json \
+   --stage-json-path "data/datasets/fphab-v0.2.1/fphab.scene_dataset_config.json" \
+   --filter-scenes "data/fphab.txt" \
+   --dataset-name floorplanner
+
+
+# python extract_sim.py \
+#    --dataset-dir "$PROCTHOR_ROOT" \
+#    --rgb-save-dir "$SAVE_ROOT"/procthor_sim \
+#    --depth-save-dir "$SAVE_ROOT"/procthor_sim_depth \
+#    --json-save-path "$MD_SAVE_ROOT"/procthor_sim_metadata.json \
+#    --stage-json-path "data/datasets/ai2thor-hab-v0.0.9/ai2thor.scene_dataset_config.json" \
+#    --filter-scenes "data/procthor.txt" \
+#    --dataset-name procthor

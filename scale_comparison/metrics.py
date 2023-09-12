@@ -361,7 +361,7 @@ def compute_scene_clutter_impl(
     navmesh = trimesh.Trimesh(vertices=navmesh_vertices, faces=navmesh_faces)
 
     # visualization
-    visualization = True
+    visualization = False
     if visualization:
         navmesh_id = kwargs['navmesh_id']
         from visualization import Visualizer
@@ -376,6 +376,7 @@ def compute_scene_clutter_impl(
         os.makedirs('navmesh-render', exist_ok=True)
         img.save(f'navmesh-render/{navmesh_id}.png')
         navmesh.export(f'navmesh-render/{navmesh_id}.ply')
+        scene_pcd.export(f'navmesh-render/{navmesh_id}_pcd.ply')
 
     # Find closest distance between a mesh_triangle and the navmesh
     # This is approximated by measuring the distance between each vertex and
@@ -490,7 +491,7 @@ def compute_floor_area_impl(
                 floor_convex_hull = ConvexHull(points)
             except:
                 continue
-            visualization = True
+            visualization = False
             if visualization:
                 import matplotlib.pyplot as plt
                 fig = plt.figure(figsize=(5, 5))
@@ -527,11 +528,13 @@ def compute_floor_area_from_nav(
             continue
         mesh_vertices.append(tmp_vertices)
         # floor_convex_hull = ConvexHull(mesh_vertices[mask, :2])
+    if len(mesh_vertices) == 0:
+        return floor_area
     mesh_vertices = np.concatenate(mesh_vertices, axis=0)
     points = mesh_vertices[:, [0, 2]]
     if len(points) > 0:
         floor_convex_hull = ConvexHull(points)
-        visualization = True
+        visualization = False
         if visualization:
             import matplotlib.pyplot as plt
             fig = plt.figure(figsize=(5, 5))

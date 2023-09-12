@@ -117,7 +117,6 @@ def get_transformation(geo_cfg):
 
 def compute_metrics(
     scene_path: str,
-    scene_dataset_cfg: str,
     voxel_size: float,
     metrics: List[str] = VALID_METRICS,
     verbose: bool = False,
@@ -137,30 +136,19 @@ def compute_metrics(
     for metric in metrics:
         assert metric in VALID_METRICS
     # load scene in habitat_simulator and trimesh
-    scene_id = scene_path.split("/")[-1].replace(".scene_instance.json", "")
-    hsim = robust_load_sim(scene_id, scene_dataset_cfg)
-    # grabbing FP scene glbs from stage file
-    with open(scene_path, "r") as f:
-        scene_json = json.load(f)
-    geometry_configs = get_geometry_configs(scene_path, scene_dataset_cfg)
-    # scene_glb_path = os.path.join(
-    #     os.path.dirname(scene_path), scene_json["render_asset"]
-    # )
-    triangles = None
-    for geometry_path, geometry_cfg in geometry_configs.items():
-        trimesh_geo = trimesh.load(geometry_path)
-        tmp_triangles = trimesh_geo.triangles
-        transformation = get_transformation(geometry_cfg)
-        tmp_triangles = tmp_triangles.dot(transformation[:3, :3].transpose()) + transformation[:3, 3]
-        if triangles is None:
-            triangles = tmp_triangles
-        else:
-            triangles = np.concatenate((triangles, tmp_triangles), axis=0)
+    scene_id = scene_path.split("/")[-1].replace(".glb", "")
+    hsim = robust_load_sim(scene_path)
+    trimesh_scene = trimesh.load(scene_path)
+    matrix = np.eye(4)
+    # r = R.from_euler('y', 90, degrees=True) * R.from_euler('x', 90, degrees=True)
+    r = R.from_euler('x', -90, degrees=True)
+    matrix[:3, :3] = r.as_matrix()
+    trimesh_scene.apply_transform(matrix)
 
     # Simplify scene-mesh for faster metric computation
     # Does not impact the final metrics much
     o3d_scene = o3d.geometry.TriangleMesh()
-    vertices = np.array(triangles).reshape(-1, 3)
+    vertices = np.array(trimesh_scene.triangles).reshape(-1, 3)
     faces = np.arange(0, len(vertices)).reshape(-1, 3)
     o3d_scene.vertices = o3d.utility.Vector3dVector(vertices)
     o3d_scene.triangles = o3d.utility.Vector3iVector(faces)
@@ -178,7 +166,7 @@ def compute_metrics(
     trimesh_scene.faces = np.array(o3d_scene.triangles)
     export_scenes = False
     if export_scenes:
-        dataset_name = os.path.basename(os.path.dirname(scene_dataset_cfg))
+        dataset_name = 'mp3d'
         output_scene_path = os.path.join('scenes', dataset_name, f'{scene_id}.glb')
         os.makedirs(os.path.dirname(output_scene_path), exist_ok=True)
         trimesh_scene.export(output_scene_path)
@@ -226,17 +214,14 @@ def _aux_fn(inputs: Any) -> Any:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--dataset-root", type=str, required=True, help="path to FP stages directory"
-    )
+    parser.add_argument("--dataset-root", type=str, required=True, help="path to FP stages directory")
     parser.add_argument("--metrics", type=str, nargs="+", default=VALID_METRICS)
     parser.add_argument("--filter-scenes", type=str, default="")
     parser.add_argument("--scene-id", type=str, default="")
     parser.add_argument("--save-path", type=str, default="")
-    parser.add_argument("--scene-dataset-cfg", type=str, required=True)
-    parser.add_argument("--scan-patterns", type=str, nargs="+", default=["**/*.scene_instance.json"])
+    parser.add_argument("--scan-patterns", type=str, nargs="+", default=["**/*.glb"])
     parser.add_argument("--voxel-size", type=float, default=0.1)
-    parser.add_argument("--n-processes", type=int, default=4)
+    parser.add_argument("--n-processes", type=int, default=1)
     parser.add_argument("--verbose", action="store_true", default=False)
 
     args = parser.parse_args()
@@ -254,10 +239,7 @@ if __name__ == "__main__":
         print(f"Number of scenes in {args.dataset_root}: {len(scenes)}")
 
     context = mp.get_context("forkserver")
-    inputs = [
-        [scene, args.scene_dataset_cfg, args.voxel_size, args.metrics, args.verbose]
-        for scene in scenes
-    ]
+    inputs = [[scene, args.voxel_size, args.metrics, args.verbose] for scene in scenes]
 
     if args.n_processes == 1:
         stats = []
