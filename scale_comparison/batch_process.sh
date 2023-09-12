@@ -3,16 +3,23 @@
 SCRIPT=compute_scene_metrics.py
 DATASET_ROOT=data/scene_datasets/fphab-v0.2.2
 DATASET_CFG=fphab.scene_dataset_config.json
-OUTPUT_PATH=data/fp_metrics_stage/fp_metrics_stage.csv
+OUTPUT_PATH=data/fp_metrics_fa/fp_metrics_fa.csv
 SCENE_IDS=data/scene_datasets/fphab.txt
-PARALLEL_N=4
+PARALLEL_N=16
 
 # SCRIPT=compute_scene_metrics.py
 # DATASET_ROOT=data/scene_datasets/ai2thor-hab-v0.0.9
 # DATASET_CFG=ai2thor.scene_dataset_config.json
-# OUTPUT_PATH=data/ithor_metrics/ithor_metrics.csv
-# SCENE_IDS=data/scene_datasets/iTHOR.txt
-# PARALLEL_N=4
+# OUTPUT_PATH=data/procthor_metrics/procthor_metrics.csv
+# SCENE_IDS=data/scene_datasets/ProcTHOR.txt
+# PARALLEL_N=8
+
+SCRIPT=compute_scene_metrics.py
+DATASET_ROOT=/localhome/yma50/Development/proj-scene-builder/habitat-matterport3d-dataset/dataset/mp3d
+DATASET_CFG=mp3d.scene_dataset_config.json
+OUTPUT_PATH=data/mp3d_metrics/mp3d_metrics.csv
+SCENE_IDS=data/scene_datasets/mp3d.txt
+PARALLEL_N=16
 
 echo "===================================="
 echo "Processing dataset ..."

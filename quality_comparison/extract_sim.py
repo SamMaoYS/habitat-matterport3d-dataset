@@ -220,7 +220,12 @@ def extract_images_in_uniform_grid(
 
 
 def _aux_fn(args):
-    return extract_images_in_uniform_grid(*args)
+    results = None
+    try:
+        results = extract_images_in_uniform_grid(*args)
+    except Exception as e:
+        print(e)
+    return results
 
 
 HFOV = 90
@@ -297,6 +302,7 @@ if __name__ == "__main__":
         all_paths = list(tqdm.tqdm(pool.imap(_aux_fn, inputs), total=len(inputs)))
 
     # Create metadata
+    all_paths = [p for p in all_paths if p is not None]
     metadata = []
     for scene_idx, scene_paths in enumerate(all_paths):
         scene_name = get_scene_name(scenes[scene_idx], args.dataset_name)

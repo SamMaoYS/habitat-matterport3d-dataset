@@ -42,17 +42,17 @@ os.environ["HABITAT_SIM_LOG"] = "quiet"
 
 VALID_METRICS: List[str] = [
     "navigable_area",
-    # "navigation_complexity",
-    # "scene_clutter",
-    # "floor_area",
+    "navigation_complexity",
+    "scene_clutter",
+    "floor_area",
 ]
 
 
 METRIC_TO_FN_MAP: Dict[str, Callable] = {
     "navigable_area": compute_navigable_area,
-    # "navigation_complexity": compute_navigation_complexity,
-    # "scene_clutter": compute_scene_clutter,
-    # "floor_area": compute_floor_area,
+    "navigation_complexity": compute_navigation_complexity,
+    "scene_clutter": compute_scene_clutter,
+    "floor_area": compute_floor_area,
 }
 
 
@@ -186,7 +186,7 @@ def compute_metrics(
         trimesh_scene.export(output_scene_path)
 
     metric_values = {}
-    check_indoor = False
+    check_indoor = True
     if check_indoor:
         navmesh_classification_results, indoor_islands = compute_navmesh_island_classifications(hsim)
     else:

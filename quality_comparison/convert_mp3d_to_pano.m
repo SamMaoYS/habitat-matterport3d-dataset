@@ -2,9 +2,9 @@
 % This source code is licensed under the MIT license found in the
 % LICENSE file in the root directory of this source tree.
 
-pano_basic_root = "<UPDATE PANO BASIC PATH>";
-mp3d_skybox_root = "<PATH TO SKYBOXES>";
-mp3d_pano_save_root = "<PATH TO SAVE PANORAMAS>";
+pano_basic_root = "./PanoBasic";
+mp3d_skybox_root = "./mp3d_skybox";
+mp3d_pano_save_root = "./mp3d_pano";
 
 
 addpath(pano_basic_root + '/' + 'CoordsTransfrom');

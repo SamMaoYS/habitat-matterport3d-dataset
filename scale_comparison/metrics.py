@@ -286,6 +286,8 @@ def compute_navigation_complexity_impl(
                 # Different floors
                 if abs(p1[1] - p2[1]) > 0.5:
                     continue
+                if np.linalg.norm(p1 - p2) < 1.0:
+                    continue
                 cur_navcomplexity = get_navcomplexity(hsim, p1, p2)
                 # Ignore disconnected pairs
                 if math.isinf(cur_navcomplexity):

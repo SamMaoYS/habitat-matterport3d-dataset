@@ -73,6 +73,7 @@ def main(args):
     df_list = []
     for metric_file in metric_files:
         tmp_df = pd.read_csv(metric_file, sep="\t")
+        # tmp_df = tmp_df.drop(1)
         scene_name = tmp_df['scene'][0]
         # scene_idx = int(scene_name.replace('_physics', '').replace('FloorPlan', ''))
         # if scene_idx >= 500:
@@ -92,6 +93,9 @@ def main(args):
     # for column in ['navigable_area', 'navigation_complexity', 'scene_clutter', 'floor_area']:
     #     df[column] = pd.to_numeric(df[column])
     num_scenes = len(df)
+    print('empty indoor')
+    print(df[df['indoor_navigable_area'] == 0])
+    print(len(df[df['indoor_navigable_area'] == 0]))
     output_str = '\n'.join([
         f'Number of scenes: {num_scenes}',
         'Mean',
