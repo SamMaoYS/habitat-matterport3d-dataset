@@ -54,8 +54,9 @@ def robust_load_sim(
     hsim = habitat_sim.Simulator(sim_cfg)
     navmesh_settings = habitat_sim.NavMeshSettings()
     navmesh_settings.set_defaults()
+    navmesh_settings.include_static_objects = True
     hsim.recompute_navmesh(
-        hsim.pathfinder, navmesh_settings, include_static_objects=True
+        hsim.pathfinder, navmesh_settings
     )
     return hsim
 

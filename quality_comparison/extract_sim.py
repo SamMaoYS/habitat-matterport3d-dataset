@@ -63,6 +63,7 @@ def make_habitat_configuration(
 
 def robust_load_sim(scene_path: str, **kwargs: Any) -> habitat_sim.Simulator:
     sim_cfg = make_habitat_configuration(scene_path, **kwargs)
+    import pdb; pdb.set_trace()
     hsim = habitat_sim.Simulator(sim_cfg)
     if not hsim.pathfinder.is_loaded:
         navmesh_settings = habitat_sim.NavMeshSettings()
@@ -244,7 +245,7 @@ if __name__ == "__main__":
         "--dataset-name",
         type=str,
         required=True,
-        choices=["gibson", "hm3d", "mp3d", "replica", "scannet", "robothor", "floorplanner", "procthor"],
+        choices=["gibson", "hm3d", "mp3d", "replica", "scannet", "robothor", "hssd", "procthor"],
     )
     parser.add_argument("--stage-json-path", type=str, default=None)
     parser.add_argument("--num-processes", type=int, default=8)
@@ -255,7 +256,7 @@ if __name__ == "__main__":
     random.seed(123)
     np.random.seed(123)
 
-    if args.dataset_name in ["gibson", "mp3d", "scannet", "robothor", "floorplanner", "procthor"]:
+    if args.dataset_name in ["gibson", "mp3d", "scannet", "robothor", "hssd", "procthor"]:
         scenes = glob.glob(f"{args.dataset_dir}/**/*.glb", recursive=True)
     elif args.dataset_name == "hm3d":
         scenes = []
@@ -292,24 +293,28 @@ if __name__ == "__main__":
     os.makedirs(args.rgb_save_dir, exist_ok=True)
     os.makedirs(args.depth_save_dir, exist_ok=True)
 
-    if args.num_processes == 1:
-        all_paths = []
-        for input in inputs:
-            all_paths.append(_aux_fn(input))
-    else:
-        context = mp.get_context("forkserver")
-        pool = context.Pool(processes=args.num_processes, maxtasksperchild=2)
-        all_paths = list(tqdm.tqdm(pool.imap(_aux_fn, inputs), total=len(inputs)))
+    try:
+        if args.num_processes == 1:
+            all_paths = []
+            for input in tqdm.tqdm(inputs):
+                all_paths.append(_aux_fn(input))
+        else:
+            context = mp.get_context("forkserver")
+            pool = context.Pool(processes=args.num_processes, maxtasksperchild=2)
+            all_paths = list(tqdm.tqdm(pool.imap(_aux_fn, inputs), total=len(inputs)))
 
-    # Create metadata
-    all_paths = [p for p in all_paths if p is not None]
-    metadata = []
-    for scene_idx, scene_paths in enumerate(all_paths):
-        scene_name = get_scene_name(scenes[scene_idx], args.dataset_name)
-        rgb_paths, depth_paths = scene_paths
-        for rgb_path, depth_path in zip(rgb_paths, depth_paths):
-            md = {"rgb_path": rgb_path, "depth_path": depth_path}
-            metadata.append(md)
+        # Create metadata
+        all_paths = [p for p in all_paths if p is not None]
+        metadata = []
+        for scene_idx, scene_paths in enumerate(all_paths):
+            scene_name = get_scene_name(scenes[scene_idx], args.dataset_name)
+            rgb_paths, depth_paths = scene_paths
+            for rgb_path, depth_path in zip(rgb_paths, depth_paths):
+                md = {"rgb_path": rgb_path, "depth_path": depth_path}
+                metadata.append(md)
+    except Exception as e:
+        print(e)
 
+    os.makedirs(os.path.dirname(args.json_save_path), exist_ok=True)
     with open(args.json_save_path, "w") as fp:
         json.dump(metadata, fp)

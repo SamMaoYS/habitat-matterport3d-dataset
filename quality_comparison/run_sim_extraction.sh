@@ -15,6 +15,7 @@ mkdir "$MD_SAVE_ROOT"
 #    --filter-scenes data/gibson_4_plus.txt \
 #    --rgb-save-dir "$SAVE_ROOT"/gibson_4_plus_sim \
 #    --depth-save-dir "$SAVE_ROOT"/gibson_4_plus_sim_depth \
+#    --stage-json-path "data/datasets/gibson/gibson_semantic.scene_dataset_config.json" \
 #    --json-save-path "$MD_SAVE_ROOT"/gibson_4_plus_sim_metadata.json \
 #    --dataset-name gibson
 
@@ -22,6 +23,7 @@ mkdir "$MD_SAVE_ROOT"
 #    --dataset-dir "$GIBSON_ROOT" \
 #    --rgb-save-dir "$SAVE_ROOT"/gibson_sim \
 #    --depth-save-dir "$SAVE_ROOT"/gibson_sim_depth \
+#    --stage-json-path "data/datasets/gibson/gibson_semantic.scene_dataset_config.json" \
 #    --json-save-path "$MD_SAVE_ROOT"/gibson_sim_metadata.json \
 #    --dataset-name gibson
 
@@ -40,12 +42,15 @@ mkdir "$MD_SAVE_ROOT"
 #    --json-save-path "$MD_SAVE_ROOT"/mp3d_sim_metadata.json \
 #    --dataset-name mp3d
 
-# python extract_sim.py \
-#     --dataset-dir "$HM3D_ROOT" \
-#     --rgb-save-dir "$SAVE_ROOT"/hm3d_sim \
-#     --depth-save-dir "$SAVE_ROOT"/hm3d_sim_depth \
-#     --json-save-path "$MD_SAVE_ROOT"/hm3d_sim_metadata.json \
-#     --dataset-name hm3d
+python extract_sim.py \
+    --dataset-dir "$HM3D_ROOT" \
+    --rgb-save-dir "$SAVE_ROOT"/hm3d_sim \
+    --depth-save-dir "$SAVE_ROOT"/hm3d_sim_depth \
+    --json-save-path "$MD_SAVE_ROOT"/hm3d_sim_metadata.json \
+    --stage-json-path "data/datasets/hm3d/hm3d_annotated_basis.scene_dataset_config.json" \
+    --num-processes 1 \
+    --dataset-name hm3d
+# --num-processes 1 \
 
 # python extract_sim.py \
 #    --dataset-dir "$SCANNET_ROOT" \
@@ -62,14 +67,14 @@ mkdir "$MD_SAVE_ROOT"
 #    --dataset-name robothor \
 #    --stage-json-path "data/robothor.scene_dataset_config.json"
 
-python extract_sim.py \
-  --dataset-dir "$FP_ROOT" \
-  --rgb-save-dir "$SAVE_ROOT"/fp_sim \
-  --depth-save-dir "$SAVE_ROOT"/fp_sim_depth \
-  --json-save-path "$MD_SAVE_ROOT"/fp_sim_metadata.json \
-  --stage-json-path "data/datasets/fphab-v0.2.1/fphab.scene_dataset_config.json" \
-  --filter-scenes "data/fphab.txt" \
-  --dataset-name floorplanner
+# python extract_sim.py \
+#   --dataset-dir "$HSSD_ROOT" \
+#   --rgb-save-dir "$SAVE_ROOT"/hssd_sim \
+#   --depth-save-dir "$SAVE_ROOT"/hssd_sim_depth \
+#   --json-save-path "$MD_SAVE_ROOT"/hssd_sim_metadata.json \
+#   --stage-json-path "data/datasets/hssd-hab/hssd-hab.scene_dataset_config.json" \
+#   --filter-scenes "data/hssdhab.txt" \
+#   --dataset-name hssd
 
 
 # python extract_sim.py \
