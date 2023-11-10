@@ -6,12 +6,14 @@ from enum import Enum
 from glob import glob
 import pdb
 
+
 class Dataset(Enum):
-    iTHOR = 'iTHOR'
-    RoboTHOR = 'RoboTHOR'
-    ArchitecTHOR = 'ArchitecTHOR'
-    ProcTHOR = 'ProcTHOR'
-    FloorPlanner = 'FloorPlanner'
+    iTHOR = "iTHOR"
+    RoboTHOR = "RoboTHOR"
+    ArchitecTHOR = "ArchitecTHOR"
+    ProcTHOR = "ProcTHOR"
+    FloorPlanner = "FloorPlanner"
+
 
 # def main(args):
 #     tmp_df = pd.read_csv(args.input, sep="\t")
@@ -20,7 +22,7 @@ class Dataset(Enum):
 #         for i, row in tmp_df.iterrows():
 #             scene_name = row['scene']
 #             scene_idx = int(scene_name.replace('_physics', '').replace('FloorPlan', ''))
-            
+
 #             if scene_idx < 21:
 #                 split = 'train'
 #             elif 21 <= scene_idx < 26:
@@ -42,7 +44,7 @@ class Dataset(Enum):
 #                 split = 'test'
 #             row['split'] = split
 #             df_list.append(row.to_frame().T)
-    
+
 #     df = pd.concat(df_list, ignore_index=True)
 #     df = df[df['split'].isin(['train', 'val', 'test'])]
 #     df.to_csv(os.path.join(args.output_dir, args.dataset + '_stats.csv'))
@@ -67,10 +69,19 @@ class Dataset(Enum):
 #     with open(os.path.join(args.output_dir, args.dataset + '_stats.txt'), "w+") as fp:
 #         fp.write(output_str)
 
+
 def main(args):
-    metric_files = glob(os.path.join(args.input_dir, '*.csv'))
+    metric_files = glob(os.path.join(args.input_dir, "*.csv"))
+    all_scenes = np.loadtxt(args.scenes, dtype=str).astype(str)
     df_list = []
     for metric_file in metric_files:
+        in_scene = False
+        for scene in all_scenes:
+            if scene in metric_file:
+                in_scene = True
+        if not in_scene:
+            continue
+
         tmp_df = pd.read_csv(metric_file, sep="\t")
         # scene_name = tmp_df['scene'][0]
         # scene_idx = int(scene_name.replace('_physics', '').replace('FloorPlan', ''))
@@ -78,11 +89,10 @@ def main(args):
         #     continue
         df_list.append(tmp_df)
     df = pd.concat(df_list, ignore_index=True)
-    df.to_csv(os.path.join(args.output_dir, args.dataset + '_metrics.csv'), index=False)
-    all_scenes = np.loadtxt(args.scenes, dtype=str).astype(str)
+    df.to_csv(os.path.join(args.output_dir, args.dataset + "_metrics.csv"), index=False)
     processed_scenes = df.scene.unique().tolist()
     unprocessed_scenes = np.setdiff1d(all_scenes, processed_scenes)
-    print(f'{len(unprocessed_scenes)} unprocessed scenes')
+    print(f"{len(unprocessed_scenes)} unprocessed scenes")
     print(unprocessed_scenes)
     # pdb.set_trace()
     # columns = df.columns.tolist()
@@ -90,25 +100,28 @@ def main(args):
     # for column in ['navigable_area', 'navigation_complexity', 'scene_clutter', 'floor_area']:
     #     df[column] = pd.to_numeric(df[column])
     num_scenes = len(df)
-    output_str = '\n'.join([
-        f'Number of scenes: {num_scenes}',
-        'Mean',
-        df.mean(numeric_only=True).to_string(),
-        'Median',
-        df.median(numeric_only=True).to_string(),
-        'Sum',
-        df.sum(numeric_only=True).to_string(),
-    ])
+    output_str = "\n".join(
+        [
+            f"Number of scenes: {num_scenes}",
+            "Mean",
+            df.mean(numeric_only=True).to_string(),
+            "Median",
+            df.median(numeric_only=True).to_string(),
+            "Sum",
+            df.sum(numeric_only=True).to_string(),
+        ]
+    )
     print(output_str)
-    with open(os.path.join(args.output_dir, args.dataset + '_stats.txt'), "w+") as fp:
+    with open(os.path.join(args.output_dir, args.dataset + "_stats.txt"), "w+") as fp:
         fp.write(output_str)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--input_dir', type=str)
-    parser.add_argument('--scenes', type=str)
-    parser.add_argument('--dataset', type=str)
-    parser.add_argument('--output_dir', type=str)
+    parser.add_argument("--input_dir", type=str)
+    parser.add_argument("--scenes", type=str)
+    parser.add_argument("--dataset", type=str)
+    parser.add_argument("--output_dir", type=str)
     args = parser.parse_args()
 
     main(args)

@@ -8,10 +8,10 @@
 # PARALLEL_N=1
 
 SCRIPT=compute_scene_metrics.py
-DATASET_ROOT=data/scene_datasets/mp3d
-OUTPUT_PATH=data/mp3d_metrics/mp3d_metrics.csv
-SCENE_IDS=data/scene_datasets/mp3d.txt
-PARALLEL_N=4
+DATASET_ROOT=data/scene_datasets/gibson_tiny
+OUTPUT_PATH=data/gibson_tiny_metrics/gibson_tiny_metrics.csv
+SCENE_IDS=data/scene_datasets/gibson_tiny.txt
+PARALLEL_N=32
 
 echo "===================================="
 echo "Processing dataset ..."
